@@ -57,7 +57,7 @@ const SEALED_CONDITIONS = [
   { label: 'Open', multiplier: 0.4 },
 ];
 
-const SCREENS = { SEARCH: 'search', CARD: 'card', SEALED: 'sealed' };
+const SCREENS = { SEARCH: 'search', CARD: 'card', SEALED: 'sealed', BARTER: 'barter', BARTER_SEARCH: 'barter_search' };
 
 export default function Index() {
   const [screen, setScreen] = useState(SCREENS.SEARCH);
@@ -82,6 +82,15 @@ export default function Index() {
   const [sealedProduct, setSealedProduct] = useState(null);
   const [sealedConditionIndex, setSealedConditionIndex] = useState(0);
   const [sealedLoading, setSealedLoading] = useState(false);
+  const [myDeck, setMyDeck] = useState([]);
+  const [theirDeck, setTheirDeck] = useState([]);
+  const [barterTarget, setBarterTarget] = useState('my');
+  const [barterQuery, setBarterQuery] = useState('');
+  const [barterResults, setBarterResults] = useState([]);
+  const [barterLoading, setBarterLoading] = useState(false);
+  const [barterConditionIndex, setBarterConditionIndex] = useState(5);
+  const [myPercentage, setMyPercentage] = useState(80);
+  const [theirPercentage, setTheirPercentage] = useState(80);
 
   useEffect(() => {
     loadPercentage();
@@ -143,20 +152,54 @@ export default function Index() {
     setLoading(false);
   };
 
-  const searchSealedProduct = async () => {
-    if (!sealedQuery.trim()) return;
-    setSealedLoading(true);
-    setSealedProduct(null);
-    await new Promise(r => setTimeout(r, 800));
-    setSealedProduct({
-      name: sealedQuery,
-      type: 'Booster Box',
-      set: 'Unknown Set',
-      price: null,
-      note: 'PriceCharting API connection coming soon.',
-    });
-    setSealedLoading(false);
+  const searchBarterCards = async () => {
+    if (!barterQuery.trim()) return;
+    setBarterLoading(true);
+    try {
+      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${barterQuery}&pageSize=20`);
+      const data = await response.json();
+      setBarterResults(data.data || []);
+    } catch (error) { console.error(error); }
+    setBarterLoading(false);
   };
+
+  const getCardPrice = (card) => {
+    if (!card.tcgplayer || !card.tcgplayer.prices) return 0;
+    const prices = card.tcgplayer.prices;
+    if (prices.holofoil) return prices.holofoil.market || 0;
+    if (prices.normal) return prices.normal.market || 0;
+    if (prices.reverseHolofoil) return prices.reverseHolofoil.market || 0;
+    return 0;
+  };
+
+  const addToDeck = (card) => {
+    const price = getCardPrice(card);
+    const condMult = CONDITIONS[barterConditionIndex].multiplier;
+    const pct = barterTarget === 'my' ? myPercentage : theirPercentage;
+    const entry = {
+      id: `${card.id}_${Date.now()}`,
+      card,
+      conditionIndex: barterConditionIndex,
+      condition: CONDITIONS[barterConditionIndex].label,
+      price,
+      vendorPrice: price * (pct / 100) * condMult,
+    };
+    if (barterTarget === 'my') setMyDeck(prev => [...prev, entry]);
+    else setTheirDeck(prev => [...prev, entry]);
+    setScreen(SCREENS.BARTER);
+    setBarterQuery('');
+    setBarterResults([]);
+  };
+  const removeFromDeck = (deck, id) => {
+    if (deck === 'my') setMyDeck(prev => prev.filter(e => e.id !== id));
+    else setTheirDeck(prev => prev.filter(e => e.id !== id));
+  };
+
+  const getDeckTotal = (deck) => deck.reduce((sum, e) => sum + e.vendorPrice, 0);
+
+  const myTotal = getDeckTotal(myDeck);
+  const theirTotal = getDeckTotal(theirDeck);
+  const delta = myTotal - theirTotal;
 
   const selectCard = (card) => {
     setSelectedCard(card);
@@ -173,9 +216,7 @@ export default function Index() {
     setCertLoading(true);
     setCertResult(null);
     await new Promise(r => setTimeout(r, 800));
-    setCertResult({
-      message: `${selectedGrader} cert lookup requires API agreement. Grade ${selectedGrade} recorded manually.`,
-    });
+    setCertResult({ message: `${selectedGrader} cert lookup requires API agreement. Grade ${selectedGrade} recorded manually.` });
     setCertLoading(false);
   };
 
@@ -221,20 +262,153 @@ export default function Index() {
 
   const renderTabBar = () => (
     <View style={styles.tabBar}>
-      <TouchableOpacity
-        style={[styles.tab, screen === SCREENS.SEARCH && styles.tabActive]}
-        onPress={() => setScreen(SCREENS.SEARCH)}
-      >
-        <Text style={[styles.tabText, screen === SCREENS.SEARCH && styles.tabTextActive]}>🔍 Singles</Text>
+      <TouchableOpacity style={[styles.tab, screen === SCREENS.SEARCH || screen === SCREENS.CARD ? styles.tabActive : null]} onPress={() => setScreen(SCREENS.SEARCH)}>
+        <Text style={[styles.tabText, screen === SCREENS.SEARCH || screen === SCREENS.CARD ? styles.tabTextActive : null]}>🔍 Singles</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, screen === SCREENS.SEALED && styles.tabActive]}
-        onPress={() => setScreen(SCREENS.SEALED)}
-      >
+      <TouchableOpacity style={[styles.tab, screen === SCREENS.SEALED && styles.tabActive]} onPress={() => setScreen(SCREENS.SEALED)}>
         <Text style={[styles.tabText, screen === SCREENS.SEALED && styles.tabTextActive]}>📦 Sealed</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.tab, (screen === SCREENS.BARTER || screen === SCREENS.BARTER_SEARCH) && styles.tabActive]} onPress={() => setScreen(SCREENS.BARTER)}>
+        <Text style={[styles.tabText, (screen === SCREENS.BARTER || screen === SCREENS.BARTER_SEARCH) && styles.tabTextActive]}>🤝 Barter</Text>
       </TouchableOpacity>
     </View>
   );
+
+  if (screen === SCREENS.BARTER_SEARCH) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Card Vendor App</Text>
+        {renderTabBar()}
+        <TouchableOpacity onPress={() => setScreen(SCREENS.BARTER)}>
+          <Text style={styles.back}>← Back to trade</Text>
+        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Adding to: {barterTarget === 'my' ? 'Your Deck' : "Their Deck"}</Text>
+        <Text style={styles.conditionTitle}>Condition</Text>
+        <View style={styles.conditionRow}>
+          {CONDITIONS.map((c, i) => (
+            <TouchableOpacity
+              key={c.label}
+              style={[styles.conditionButton, { backgroundColor: barterConditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]}
+              onPress={() => setBarterConditionIndex(i)}
+            >
+              <Text style={[styles.conditionText, { color: barterConditionIndex === i ? '#fff' : '#666' }]}>{c.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.searchRow}>
+          <TextInput style={styles.input} placeholder="Search card name..." value={barterQuery} onChangeText={setBarterQuery} />
+          <TouchableOpacity style={styles.button} onPress={searchBarterCards}>
+            <Text style={styles.buttonText}>Search</Text>
+          </TouchableOpacity>
+        </View>
+        {barterLoading && <ActivityIndicator size="large" color="#e63946" />}
+        <FlatList
+          data={barterResults}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity onPress={() => addToDeck(item)}>
+              <View style={styles.card}>
+                <Image source={{ uri: item.images.small }} style={styles.cardImage} />
+                <View style={styles.cardInfo}>
+                  <Text style={styles.cardName}>{item.name}</Text>
+                  <Text style={styles.cardSet}>{item.set.name}</Text>
+                  <Text style={styles.cardNumber}>#{item.number} — ${getCardPrice(item).toFixed(2)}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+    );
+  }
+
+  if (screen === SCREENS.BARTER) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Card Vendor App</Text>
+        {renderTabBar()}
+        <ScrollView>
+          <View style={styles.barterContainer}>
+            <View style={styles.deckColumn}>
+              <Text style={styles.deckTitle}>YOUR DECK</Text>
+              {myDeck.map((entry) => (
+                <View key={entry.id} style={styles.deckCard}>
+                  <Image source={{ uri: entry.card.images.small }} style={styles.deckCardImage} />
+                  <View style={styles.deckCardInfo}>
+                    <Text style={styles.deckCardName} numberOfLines={1}>{entry.card.name}</Text>
+                    <Text style={styles.deckCardCond}>{entry.condition}</Text>
+                    <Text style={styles.deckCardPrice}>${entry.vendorPrice.toFixed(2)}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => removeFromDeck('my', entry.id)}>
+                    <Text style={styles.removeBtn}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('my'); setScreen(SCREENS.BARTER_SEARCH); }}>
+                <Text style={styles.addCardButtonText}>+ Add Card</Text>
+              </TouchableOpacity>
+             <View style={styles.percentageRow}>
+                <TouchableOpacity style={styles.percentageButton} onPress={() => setMyPercentage(Math.max(10, myPercentage - 1))}>
+                  <Text style={styles.percentageButtonText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.percentageValue}>{myPercentage}%</Text>
+                <TouchableOpacity style={styles.percentageButton} onPress={() => setMyPercentage(Math.min(100, myPercentage + 1))}>
+                  <Text style={styles.percentageButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.deckTotal}>Total: ${myTotal.toFixed(2)}</Text>
+            </View>
+
+            <View style={styles.deckDivider} />
+
+            <View style={styles.deckColumn}>
+              <Text style={styles.deckTitle}>THEIR DECK</Text>
+              {theirDeck.map((entry) => (
+                <View key={entry.id} style={styles.deckCard}>
+                  <Image source={{ uri: entry.card.images.small }} style={styles.deckCardImage} />
+                  <View style={styles.deckCardInfo}>
+                    <Text style={styles.deckCardName} numberOfLines={1}>{entry.card.name}</Text>
+                    <Text style={styles.deckCardCond}>{entry.condition}</Text>
+                    <Text style={styles.deckCardPrice}>${entry.vendorPrice.toFixed(2)}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => removeFromDeck('their', entry.id)}>
+                    <Text style={styles.removeBtn}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('their'); setScreen(SCREENS.BARTER_SEARCH); }}>
+                <Text style={styles.addCardButtonText}>+ Add Card</Text>
+              </TouchableOpacity>
+           <View style={styles.percentageRow}>
+                <TouchableOpacity style={styles.percentageButton} onPress={() => setTheirPercentage(Math.max(10, theirPercentage - 1))}>
+                  <Text style={styles.percentageButtonText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.percentageValue}>{theirPercentage}%</Text>
+                <TouchableOpacity style={styles.percentageButton} onPress={() => setTheirPercentage(Math.min(100, theirPercentage + 1))}>
+                  <Text style={styles.percentageButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.deckTotal}>Total: ${theirTotal.toFixed(2)}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.deltaBox, delta === 0 ? styles.deltaClean : delta > 0 ? styles.deltaPos : styles.deltaNeg]}>
+            {delta === 0 ? (
+              <Text style={styles.deltaText}>✅ Clean Trade</Text>
+            ) : delta > 0 ? (
+              <Text style={styles.deltaText}>They add ${Math.abs(delta).toFixed(2)} cash</Text>
+            ) : (
+              <Text style={styles.deltaText}>You add ${Math.abs(delta).toFixed(2)} cash</Text>
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.clearButton} onPress={() => { setMyDeck([]); setTheirDeck([]); }}>
+            <Text style={styles.clearButtonText}>🗑 Clear Trade</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
 
   if (screen === SCREENS.SEALED) {
     return (
@@ -244,13 +418,15 @@ export default function Index() {
         <ScrollView>
           <Text style={styles.sectionTitle}>Sealed Product Lookup</Text>
           <View style={styles.searchRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Search product name or scan barcode..."
-              value={sealedQuery}
-              onChangeText={setSealedQuery}
-            />
-            <TouchableOpacity style={styles.button} onPress={searchSealedProduct}>
+            <TextInput style={styles.input} placeholder="Search product name..." value={sealedQuery} onChangeText={setSealedQuery} />
+            <TouchableOpacity style={styles.button} onPress={async () => {
+              if (!sealedQuery.trim()) return;
+              setSealedLoading(true);
+              setSealedProduct(null);
+              await new Promise(r => setTimeout(r, 800));
+              setSealedProduct({ name: sealedQuery, type: 'Booster Box', set: 'Unknown Set', note: 'PriceCharting API connection coming soon.' });
+              setSealedLoading(false);
+            }}>
               <Text style={styles.buttonText}>Search</Text>
             </TouchableOpacity>
           </View>
@@ -266,14 +442,8 @@ export default function Index() {
               <Text style={styles.sectionTitle}>Sealed Condition</Text>
               <View style={styles.sealedConditionRow}>
                 {SEALED_CONDITIONS.map((c, i) => (
-                  <TouchableOpacity
-                    key={c.label}
-                    style={[styles.sealedCondButton, sealedConditionIndex === i && styles.sealedCondButtonActive]}
-                    onPress={() => setSealedConditionIndex(i)}
-                  >
-                    <Text style={[styles.sealedCondText, sealedConditionIndex === i && styles.sealedCondTextActive]}>
-                      {c.label}
-                    </Text>
+                  <TouchableOpacity key={c.label} style={[styles.sealedCondButton, sealedConditionIndex === i && styles.sealedCondButtonActive]} onPress={() => setSealedConditionIndex(i)}>
+                    <Text style={[styles.sealedCondText, sealedConditionIndex === i && styles.sealedCondTextActive]}>{c.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -296,20 +466,14 @@ export default function Index() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
         <View style={styles.languageRow}>
           {LANGUAGES.map((lang) => (
-            <TouchableOpacity
-              key={lang.code}
-              style={[styles.langButton, language === lang.code && styles.langButtonActive]}
-              onPress={() => setLanguage(lang.code)}
-            >
+            <TouchableOpacity key={lang.code} style={[styles.langButton, language === lang.code && styles.langButtonActive]} onPress={() => setLanguage(lang.code)}>
               <Text style={styles.langFlag}>{lang.flag}</Text>
               <Text style={[styles.langLabel, language === lang.code && styles.langLabelActive]}>{lang.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
-      {isPhase2Language && (
-        <Text style={styles.phase2Note}>⚠ Full pricing for this language coming in Phase 2.</Text>
-      )}
+      {isPhase2Language && <Text style={styles.phase2Note}>⚠ Full pricing for this language coming in Phase 2.</Text>}
 
       {screen === SCREENS.SEARCH && (
         <>
@@ -317,12 +481,7 @@ export default function Index() {
             <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
               <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
             </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              placeholder="Search card name..."
-              value={query}
-              onChangeText={setQuery}
-            />
+            <TextInput style={styles.input} placeholder="Search card name..." value={query} onChangeText={setQuery} />
             <TouchableOpacity style={styles.button} onPress={searchCards}>
               <Text style={styles.buttonText}>Search</Text>
             </TouchableOpacity>
@@ -413,11 +572,7 @@ export default function Index() {
                 <Text style={styles.conditionTitle}>Condition</Text>
                 <View style={styles.conditionRow}>
                   {CONDITIONS.map((c, i) => (
-                    <TouchableOpacity
-                      key={c.label}
-                      style={[styles.conditionButton, { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]}
-                      onPress={() => setConditionIndex(i)}
-                    >
+                    <TouchableOpacity key={c.label} style={[styles.conditionButton, { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]} onPress={() => setConditionIndex(i)}>
                       <Text style={[styles.conditionText, { color: conditionIndex === i ? '#fff' : '#666' }]}>{c.label}</Text>
                     </TouchableOpacity>
                   ))}
@@ -488,7 +643,7 @@ const styles = StyleSheet.create({
   tabBar: { flexDirection: 'row', marginBottom: 15, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#e63946' },
   tab: { flex: 1, padding: 10, alignItems: 'center', backgroundColor: '#fff' },
   tabActive: { backgroundColor: '#e63946' },
-  tabText: { fontSize: 14, color: '#e63946', fontWeight: 'bold' },
+  tabText: { fontSize: 13, color: '#e63946', fontWeight: 'bold' },
   tabTextActive: { color: '#fff' },
   languageScroll: { marginBottom: 10 },
   languageRow: { flexDirection: 'row', gap: 8, paddingBottom: 5 },
@@ -544,7 +699,7 @@ const styles = StyleSheet.create({
   gradeSummaryText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   conditionContainer: { marginTop: 10, width: '100%' },
   conditionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  conditionRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  conditionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   conditionButton: { padding: 8, borderRadius: 6, alignItems: 'center', minWidth: 40 },
   conditionText: { fontSize: 12, fontWeight: 'bold' },
   priceBox: { marginTop: 20, alignItems: 'center', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10, width: '100%' },
@@ -583,4 +738,25 @@ const styles = StyleSheet.create({
   sealedCondButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
   sealedCondText: { fontSize: 14, color: '#666', fontWeight: 'bold' },
   sealedCondTextActive: { color: '#fff' },
+  barterContainer: { flexDirection: 'row', gap: 10 },
+  deckColumn: { flex: 1 },
+  deckTitle: { fontSize: 13, fontWeight: 'bold', color: '#e63946', marginBottom: 10, textAlign: 'center' },
+  deckCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderRadius: 8, padding: 6, marginBottom: 6 },
+  deckCardImage: { width: 36, height: 50, borderRadius: 4 },
+  deckCardInfo: { flex: 1, marginLeft: 6 },
+  deckCardName: { fontSize: 11, fontWeight: 'bold' },
+  deckCardCond: { fontSize: 10, color: '#666' },
+  deckCardPrice: { fontSize: 11, color: '#e63946', fontWeight: 'bold' },
+  removeBtn: { fontSize: 16, color: '#999', paddingHorizontal: 4 },
+  addCardButton: { borderWidth: 1, borderColor: '#e63946', borderRadius: 8, borderStyle: 'dashed', padding: 8, alignItems: 'center', marginTop: 6 },
+  addCardButtonText: { color: '#e63946', fontWeight: 'bold', fontSize: 13 },
+  deckTotal: { fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginTop: 8, color: '#222' },
+  deckDivider: { width: 1, backgroundColor: '#eee' },
+  deltaBox: { marginTop: 20, padding: 20, borderRadius: 12, alignItems: 'center' },
+  deltaClean: { backgroundColor: '#d4edda' },
+  deltaPos: { backgroundColor: '#fff3cd' },
+  deltaNeg: { backgroundColor: '#fff3f3' },
+  deltaText: { fontSize: 20, fontWeight: 'bold', color: '#222' },
+  clearButton: { marginTop: 15, marginBottom: 30, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center' },
+  clearButtonText: { color: '#999', fontWeight: 'bold' },
 });
