@@ -46,6 +46,11 @@ const CURRENCIES = [
   { code: 'SEK', symbol: 'kr', flag: '🇸🇪', label: 'SEK' },
 ];
 
+const GRADERS = ['PSA', 'BGS', 'CGC', 'Other'];
+const PSA_GRADES = ['1', '1.5', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const BGS_GRADES = ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'];
+const CGC_GRADES = ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'];
+
 export default function Index() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -58,6 +63,12 @@ export default function Index() {
   const [language, setLanguage] = useState('en');
   const [exchangeRates, setExchangeRates] = useState({});
   const [ratesLoading, setRatesLoading] = useState(false);
+  const [isGraded, setIsGraded] = useState(false);
+  const [selectedGrader, setSelectedGrader] = useState('PSA');
+  const [selectedGrade, setSelectedGrade] = useState('9');
+  const [certNumber, setCertNumber] = useState('');
+  const [certLoading, setCertLoading] = useState(false);
+  const [certResult, setCertResult] = useState(null);
 
   useEffect(() => {
     loadPercentage();
@@ -134,6 +145,28 @@ export default function Index() {
     setSelectedCard(card);
     setAnchorSource('tcgplayer');
     setConditionIndex(5);
+    setIsGraded(false);
+    setCertNumber('');
+    setCertResult(null);
+  };
+
+  const lookupCert = async () => {
+    if (!certNumber.trim()) return;
+    setCertLoading(true);
+    setCertResult(null);
+    await new Promise(r => setTimeout(r, 800));
+    setCertResult({
+      status: 'pending',
+      message: `${selectedGrader} cert lookup requires API agreement. Grade ${selectedGrade} recorded manually.`,
+    });
+    setCertLoading(false);
+  };
+
+  const getGrades = () => {
+    if (selectedGrader === 'PSA') return PSA_GRADES;
+    if (selectedGrader === 'BGS') return BGS_GRADES;
+    if (selectedGrader === 'CGC') return CGC_GRADES;
+    return PSA_GRADES;
   };
 
   const getPrice = (card, source) => {
@@ -149,7 +182,7 @@ export default function Index() {
   };
 
   const getAnchorPrice = () => getPrice(selectedCard, anchorSource);
-  const conditionMultiplier = CONDITIONS[conditionIndex].multiplier;
+  const conditionMultiplier = isGraded ? 1.0 : CONDITIONS[conditionIndex].multiplier;
   const anchorPrice = selectedCard ? getAnchorPrice() : null;
   const vendorPrice = anchorPrice ? anchorPrice * (percentage / 100) * conditionMultiplier : null;
 
@@ -251,6 +284,99 @@ export default function Index() {
             <Text style={styles.cardName}>{selectedCard.name}</Text>
             <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
 
+            <View style={styles.gradedToggleRow}>
+              <TouchableOpacity
+                style={[styles.gradedToggle, !isGraded && styles.gradedToggleActive]}
+                onPress={() => setIsGraded(false)}
+              >
+                <Text style={[styles.gradedToggleText, !isGraded && styles.gradedToggleTextActive]}>Raw Card</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.gradedToggle, isGraded && styles.gradedToggleActive]}
+                onPress={() => setIsGraded(true)}
+              >
+                <Text style={[styles.gradedToggleText, isGraded && styles.gradedToggleTextActive]}>Graded Card</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isGraded ? (
+              <View style={styles.gradedBox}>
+                <Text style={styles.sectionTitle}>Grading Company</Text>
+                <View style={styles.graderRow}>
+                  {GRADERS.map((g) => (
+                    <TouchableOpacity
+                      key={g}
+                      style={[styles.graderButton, selectedGrader === g && styles.graderButtonActive]}
+                      onPress={() => setSelectedGrader(g)}
+                    >
+                      <Text style={[styles.graderText, selectedGrader === g && styles.graderTextActive]}>{g}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.sectionTitle}>Grade</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.gradeRow}>
+                    {getGrades().map((g) => (
+                      <TouchableOpacity
+                        key={g}
+                        style={[styles.gradeButton, selectedGrade === g && styles.gradeButtonActive]}
+                        onPress={() => setSelectedGrade(g)}
+                      >
+                        <Text style={[styles.gradeText, selectedGrade === g && styles.gradeTextActive]}>{g}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <Text style={styles.sectionTitle}>Cert Number (optional)</Text>
+                <View style={styles.certRow}>
+                  <TextInput
+                    style={styles.certInput}
+                    placeholder="Enter cert number..."
+                    value={certNumber}
+                    onChangeText={setCertNumber}
+                    keyboardType="numeric"
+                  />
+                  <TouchableOpacity style={styles.certButton} onPress={lookupCert}>
+                    {certLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.certButtonText}>Lookup</Text>}
+                  </TouchableOpacity>
+                </View>
+                {certResult && (
+                  <View style={styles.certResult}>
+                    <Text style={styles.certResultText}>⚠ {certResult.message}</Text>
+                  </View>
+                )}
+
+                <View style={styles.gradeSummary}>
+                  <Text style={styles.gradeSummaryText}>{selectedGrader} {selectedGrade}</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.conditionContainer}>
+                <Text style={styles.conditionTitle}>Condition</Text>
+                <View style={styles.conditionRow}>
+                  {CONDITIONS.map((c, i) => (
+                    <TouchableOpacity
+                      key={c.label}
+                      style={[
+                        styles.conditionButton,
+                        { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }
+                      ]}
+                      onPress={() => setConditionIndex(i)}
+                    >
+                      <Text style={[
+                        styles.conditionText,
+                        { color: conditionIndex === i ? '#fff' : '#666' }
+                      ]}>
+                        {c.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View style={styles.priceBox}>
               <Text style={styles.priceLabel}>{sourceLabel[anchorSource]} Market Price</Text>
               {getAnchorPrice() ? (
@@ -260,31 +386,10 @@ export default function Index() {
               )}
             </View>
 
-            <View style={styles.conditionContainer}>
-              <Text style={styles.conditionTitle}>Condition</Text>
-              <View style={styles.conditionRow}>
-                {CONDITIONS.map((c, i) => (
-                  <TouchableOpacity
-                    key={c.label}
-                    style={[
-                      styles.conditionButton,
-                      { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }
-                    ]}
-                    onPress={() => setConditionIndex(i)}
-                  >
-                    <Text style={[
-                      styles.conditionText,
-                      { color: conditionIndex === i ? '#fff' : '#666' }
-                    ]}>
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
             <View style={styles.vendorBox}>
-              <Text style={styles.vendorLabel}>Your Price ({percentage}% — {CONDITIONS[conditionIndex].label})</Text>
+              <Text style={styles.vendorLabel}>
+                Your Price ({percentage}% — {isGraded ? `${selectedGrader} ${selectedGrade}` : CONDITIONS[conditionIndex].label})
+              </Text>
               {vendorPrice ? (
                 <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text>
               ) : (
@@ -385,15 +490,40 @@ const styles = StyleSheet.create({
   languageBadge: { backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 10 },
   languageBadgeText: { fontSize: 13, color: '#444' },
   largeImage: { width: 200, height: 280, borderRadius: 8, marginBottom: 15 },
-  priceBox: { marginTop: 20, alignItems: 'center', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10, width: '100%' },
-  priceLabel: { fontSize: 14, color: '#666', marginBottom: 5 },
-  price: { fontSize: 32, fontWeight: 'bold', color: '#222' },
-  noPrice: { fontSize: 16, color: '#999' },
-  conditionContainer: { marginTop: 20, width: '100%' },
+  gradedToggleRow: { flexDirection: 'row', marginVertical: 15, borderWidth: 1, borderColor: '#e63946', borderRadius: 8, overflow: 'hidden', width: '100%' },
+  gradedToggle: { flex: 1, padding: 10, alignItems: 'center', backgroundColor: '#fff' },
+  gradedToggleActive: { backgroundColor: '#e63946' },
+  gradedToggleText: { fontSize: 14, color: '#e63946', fontWeight: 'bold' },
+  gradedToggleTextActive: { color: '#fff' },
+  gradedBox: { width: '100%', backgroundColor: '#f8f8f8', borderRadius: 10, padding: 15, marginBottom: 10 },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#444', marginBottom: 8, marginTop: 10 },
+  graderRow: { flexDirection: 'row', gap: 8 },
+  graderButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', backgroundColor: '#fff' },
+  graderButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
+  graderText: { fontSize: 14, color: '#666', fontWeight: 'bold' },
+  graderTextActive: { color: '#fff' },
+  gradeRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  gradeButton: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  gradeButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
+  gradeText: { fontSize: 13, color: '#666', fontWeight: 'bold' },
+  gradeTextActive: { color: '#fff' },
+  certRow: { flexDirection: 'row', gap: 8 },
+  certInput: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, backgroundColor: '#fff' },
+  certButton: { backgroundColor: '#e63946', paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  certButtonText: { color: '#fff', fontWeight: 'bold' },
+  certResult: { marginTop: 8, backgroundColor: '#fff3cd', padding: 10, borderRadius: 8 },
+  certResultText: { fontSize: 12, color: '#856404' },
+  gradeSummary: { marginTop: 12, backgroundColor: '#e63946', padding: 12, borderRadius: 8, alignItems: 'center' },
+  gradeSummaryText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  conditionContainer: { marginTop: 10, width: '100%' },
   conditionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   conditionRow: { flexDirection: 'row', justifyContent: 'space-between' },
   conditionButton: { padding: 8, borderRadius: 6, alignItems: 'center', minWidth: 40 },
   conditionText: { fontSize: 12, fontWeight: 'bold' },
+  priceBox: { marginTop: 20, alignItems: 'center', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10, width: '100%' },
+  priceLabel: { fontSize: 14, color: '#666', marginBottom: 5 },
+  price: { fontSize: 32, fontWeight: 'bold', color: '#222' },
+  noPrice: { fontSize: 16, color: '#999' },
   vendorBox: { marginTop: 10, alignItems: 'center', backgroundColor: '#fff3f3', padding: 15, borderRadius: 10, width: '100%' },
   vendorLabel: { fontSize: 14, color: '#e63946', marginBottom: 5 },
   vendorPrice: { fontSize: 32, fontWeight: 'bold', color: '#e63946' },
