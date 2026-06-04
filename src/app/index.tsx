@@ -31,6 +31,21 @@ const LANGUAGES = [
   { code: 'ru', label: 'Russian', flag: '🇷🇺' },
 ];
 
+const CURRENCIES = [
+  { code: 'USD', symbol: '$', flag: '🇺🇸', label: 'USD' },
+  { code: 'EUR', symbol: '€', flag: '🇪🇺', label: 'EUR' },
+  { code: 'GBP', symbol: '£', flag: '🇬🇧', label: 'GBP' },
+  { code: 'AUD', symbol: 'A$', flag: '🇦🇺', label: 'AUD' },
+  { code: 'CAD', symbol: 'C$', flag: '🇨🇦', label: 'CAD' },
+  { code: 'JPY', symbol: '¥', flag: '🇯🇵', label: 'JPY' },
+  { code: 'CHF', symbol: 'Fr', flag: '🇨🇭', label: 'CHF' },
+  { code: 'KRW', symbol: '₩', flag: '🇰🇷', label: 'KRW' },
+  { code: 'CNY', symbol: '¥', flag: '🇨🇳', label: 'CNY' },
+  { code: 'BRL', symbol: 'R$', flag: '🇧🇷', label: 'BRL' },
+  { code: 'PLN', symbol: 'zł', flag: '🇵🇱', label: 'PLN' },
+  { code: 'SEK', symbol: 'kr', flag: '🇸🇪', label: 'SEK' },
+];
+
 export default function Index() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -41,9 +56,12 @@ export default function Index() {
   const [percentage, setPercentage] = useState(80);
   const [listening, setListening] = useState(false);
   const [language, setLanguage] = useState('en');
+  const [exchangeRates, setExchangeRates] = useState({});
+  const [ratesLoading, setRatesLoading] = useState(false);
 
   useEffect(() => {
     loadPercentage();
+    fetchExchangeRates();
   }, []);
 
   useSpeechRecognitionEvent('result', (event) => {
@@ -67,6 +85,23 @@ export default function Index() {
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
   };
 
+  const fetchExchangeRates = async () => {
+    setRatesLoading(true);
+    try {
+      const response = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await response.json();
+      if (data.rates) setExchangeRates(data.rates);
+    } catch (error) {
+      console.error('Failed to fetch exchange rates', error);
+    }
+    setRatesLoading(false);
+  };
+
+  const convertPrice = (usdPrice, currencyCode) => {
+    if (!usdPrice || !exchangeRates[currencyCode]) return null;
+    return usdPrice * exchangeRates[currencyCode];
+  };
+
   const loadPercentage = async () => {
     try {
       const value = await AsyncStorage.getItem('vendor_percentage');
@@ -86,8 +121,7 @@ export default function Index() {
     setLoading(true);
     setSelectedCard(null);
     try {
-      const langFilter = language === 'ja' ? '&q=nationalPokedexNumbers:[1 TO 9999]' : '';
-      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20${langFilter}`);
+      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20`);
       const data = await response.json();
       setResults(data.data || []);
     } catch (error) {
@@ -132,7 +166,13 @@ export default function Index() {
     ? ['yahoo_japan', 'mercari_japan', 'pricecharting']
     : ['tcgplayer', 'pricecharting', 'ebay_sold', 'ebay_30day'];
 
-const isPhase2Language = !['en', 'ja'].includes(language);
+  const isPhase2Language = !['en', 'ja'].includes(language);
+
+  const formatCurrency = (amount, code) => {
+    if (amount === null) return 'N/A';
+    if (code === 'JPY' || code === 'KRW') return `${CURRENCIES.find(c => c.code === code)?.symbol}${Math.round(amount).toLocaleString()}`;
+    return `${CURRENCIES.find(c => c.code === code)?.symbol}${amount.toFixed(2)}`;
+  };
 
   return (
     <View style={styles.container}>
@@ -267,6 +307,30 @@ const isPhase2Language = !['en', 'ja'].includes(language);
               </View>
             </View>
 
+            {anchorPrice && (
+              <View style={styles.currencyBox}>
+                <Text style={styles.currencyTitle}>Currency Converter</Text>
+                {ratesLoading ? (
+                  <ActivityIndicator size="small" color="#e63946" />
+                ) : (
+                  <View style={styles.currencyGrid}>
+                    {CURRENCIES.filter(c => c.code !== 'USD').map((currency) => {
+                      const converted = convertPrice(anchorPrice, currency.code);
+                      return (
+                        <View key={currency.code} style={styles.currencyItem}>
+                          <Text style={styles.currencyFlag}>{currency.flag}</Text>
+                          <Text style={styles.currencyCode}>{currency.code}</Text>
+                          <Text style={styles.currencyAmount}>
+                            {formatCurrency(converted, currency.code)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
             <Text style={styles.sourcesTitle}>Price Sources</Text>
             <View style={styles.sourcesRow}>
               {availableSources.map((source) => (
@@ -295,13 +359,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
   languageScroll: { marginBottom: 10 },
-languageRow: { flexDirection: 'row', gap: 8, paddingBottom: 5 },
-phase2Note: { fontSize: 12, color: '#f4a261', marginBottom: 10, textAlign: 'center' },
-  langButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', flex: 1, justifyContent: 'center' },
+  languageRow: { flexDirection: 'row', gap: 8, paddingBottom: 5 },
+  langButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', justifyContent: 'center' },
   langButtonActive: { borderColor: '#e63946', backgroundColor: '#fff3f3' },
   langFlag: { fontSize: 18, marginRight: 6 },
-  langLabel: { fontSize: 14, color: '#666' },
+  langLabel: { fontSize: 13, color: '#666' },
   langLabelActive: { color: '#e63946', fontWeight: 'bold' },
+  phase2Note: { fontSize: 12, color: '#f4a261', marginBottom: 10, textAlign: 'center' },
   searchRow: { flexDirection: 'row', marginBottom: 20, alignItems: 'center' },
   micButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
   micButtonActive: { backgroundColor: '#ffd6d6' },
@@ -337,6 +401,13 @@ phase2Note: { fontSize: 12, color: '#f4a261', marginBottom: 10, textAlign: 'cent
   percentageButton: { backgroundColor: '#e63946', width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   percentageButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   percentageValue: { fontSize: 18, fontWeight: 'bold', marginHorizontal: 15 },
+  currencyBox: { marginTop: 20, width: '100%', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10 },
+  currencyTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  currencyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  currencyItem: { alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, padding: 8, minWidth: '22%', borderWidth: 1, borderColor: '#eee' },
+  currencyFlag: { fontSize: 20, marginBottom: 2 },
+  currencyCode: { fontSize: 11, color: '#666', marginBottom: 2 },
+  currencyAmount: { fontSize: 13, fontWeight: 'bold', color: '#222' },
   sourcesTitle: { marginTop: 20, marginBottom: 10, fontSize: 16, fontWeight: 'bold', alignSelf: 'flex-start' },
   sourcesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: '100%' },
   sourceButton: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, minWidth: '45%', alignItems: 'center' },
