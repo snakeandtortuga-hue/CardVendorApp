@@ -33,18 +33,18 @@ const LANGUAGES = [
 ];
 
 const CURRENCIES = [
-  { code: 'USD', symbol: '$', flag: '🇺🇸', label: 'USD' },
-  { code: 'EUR', symbol: '€', flag: '🇪🇺', label: 'EUR' },
-  { code: 'GBP', symbol: '£', flag: '🇬🇧', label: 'GBP' },
-  { code: 'AUD', symbol: 'A$', flag: '🇦🇺', label: 'AUD' },
-  { code: 'CAD', symbol: 'C$', flag: '🇨🇦', label: 'CAD' },
-  { code: 'JPY', symbol: '¥', flag: '🇯🇵', label: 'JPY' },
-  { code: 'CHF', symbol: 'Fr', flag: '🇨🇭', label: 'CHF' },
-  { code: 'KRW', symbol: '₩', flag: '🇰🇷', label: 'KRW' },
-  { code: 'CNY', symbol: '¥', flag: '🇨🇳', label: 'CNY' },
-  { code: 'BRL', symbol: 'R$', flag: '🇧🇷', label: 'BRL' },
-  { code: 'PLN', symbol: 'zł', flag: '🇵🇱', label: 'PLN' },
-  { code: 'SEK', symbol: 'kr', flag: '🇸🇪', label: 'SEK' },
+  { code: 'USD', symbol: '$', flag: '🇺🇸' },
+  { code: 'EUR', symbol: '€', flag: '🇪🇺' },
+  { code: 'GBP', symbol: '£', flag: '🇬🇧' },
+  { code: 'AUD', symbol: 'A$', flag: '🇦🇺' },
+  { code: 'CAD', symbol: 'C$', flag: '🇨🇦' },
+  { code: 'JPY', symbol: '¥', flag: '🇯🇵' },
+  { code: 'CHF', symbol: 'Fr', flag: '🇨🇭' },
+  { code: 'KRW', symbol: '₩', flag: '🇰🇷' },
+  { code: 'CNY', symbol: '¥', flag: '🇨🇳' },
+  { code: 'BRL', symbol: 'R$', flag: '🇧🇷' },
+  { code: 'PLN', symbol: 'zł', flag: '🇵🇱' },
+  { code: 'SEK', symbol: 'kr', flag: '🇸🇪' },
 ];
 
 const GRADERS = ['PSA', 'BGS', 'CGC', 'Other'];
@@ -56,6 +56,16 @@ const SEALED_CONDITIONS = [
   { label: 'Sealed (Mint)', multiplier: 1.0 },
   { label: 'Sealed (Damaged)', multiplier: 0.7 },
   { label: 'Open', multiplier: 0.4 },
+];
+
+const VARIANTS = [
+  { key: '1st_edition', label: '1st Edition', premium: true },
+  { key: 'shadowless', label: 'Shadowless', premium: true },
+  { key: 'unlimited', label: 'Unlimited', premium: false },
+  { key: 'reverse_holo', label: 'Reverse Holo', premium: false },
+  { key: 'holo_rare', label: 'Holo Rare', premium: false },
+  { key: 'special_illustration', label: 'Special Illus. Rare', premium: true },
+  { key: 'promo', label: 'Promo', premium: false },
 ];
 
 const SCREENS = { SEARCH: 'search', CARD: 'card', SEALED: 'sealed', BARTER: 'barter', BARTER_SEARCH: 'barter_search' };
@@ -83,8 +93,6 @@ export default function Index() {
   const [sealedProduct, setSealedProduct] = useState(null);
   const [sealedConditionIndex, setSealedConditionIndex] = useState(0);
   const [sealedLoading, setSealedLoading] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [myDeck, setMyDeck] = useState([]);
   const [theirDeck, setTheirDeck] = useState([]);
   const [barterTarget, setBarterTarget] = useState('my');
@@ -94,6 +102,9 @@ export default function Index() {
   const [barterConditionIndex, setBarterConditionIndex] = useState(5);
   const [myPercentage, setMyPercentage] = useState(80);
   const [theirPercentage, setTheirPercentage] = useState(80);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [selectedVariant, setSelectedVariant] = useState(null);
 
   useEffect(() => {
     loadPercentage();
@@ -115,16 +126,15 @@ export default function Index() {
     setListening(true);
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
   };
-const openCamera = async () => {
+
+  const openCamera = async () => {
     if (!cameraPermission?.granted) {
       const result = await requestCameraPermission();
-      if (!result.granted) {
-        alert('Camera permission is required for card scanning.');
-        return;
-      }
+      if (!result.granted) { alert('Camera permission required.'); return; }
     }
     setCameraOpen(true);
   };
+
   const fetchExchangeRates = async () => {
     setRatesLoading(true);
     try {
@@ -202,13 +212,13 @@ const openCamera = async () => {
     setBarterQuery('');
     setBarterResults([]);
   };
+
   const removeFromDeck = (deck, id) => {
     if (deck === 'my') setMyDeck(prev => prev.filter(e => e.id !== id));
     else setTheirDeck(prev => prev.filter(e => e.id !== id));
   };
 
   const getDeckTotal = (deck) => deck.reduce((sum, e) => sum + e.vendorPrice, 0);
-
   const myTotal = getDeckTotal(myDeck);
   const theirTotal = getDeckTotal(theirDeck);
   const delta = myTotal - theirTotal;
@@ -220,6 +230,7 @@ const openCamera = async () => {
     setIsGraded(false);
     setCertNumber('');
     setCertResult(null);
+    setSelectedVariant(null);
     setScreen(SCREENS.CARD);
   };
 
@@ -274,8 +285,8 @@ const openCamera = async () => {
 
   const renderTabBar = () => (
     <View style={styles.tabBar}>
-      <TouchableOpacity style={[styles.tab, screen === SCREENS.SEARCH || screen === SCREENS.CARD ? styles.tabActive : null]} onPress={() => setScreen(SCREENS.SEARCH)}>
-        <Text style={[styles.tabText, screen === SCREENS.SEARCH || screen === SCREENS.CARD ? styles.tabTextActive : null]}>🔍 Singles</Text>
+      <TouchableOpacity style={[styles.tab, (screen === SCREENS.SEARCH || screen === SCREENS.CARD) && styles.tabActive]} onPress={() => setScreen(SCREENS.SEARCH)}>
+        <Text style={[styles.tabText, (screen === SCREENS.SEARCH || screen === SCREENS.CARD) && styles.tabTextActive]}>🔍 Singles</Text>
       </TouchableOpacity>
       <TouchableOpacity style={[styles.tab, screen === SCREENS.SEALED && styles.tabActive]} onPress={() => setScreen(SCREENS.SEALED)}>
         <Text style={[styles.tabText, screen === SCREENS.SEALED && styles.tabTextActive]}>📦 Sealed</Text>
@@ -298,47 +309,17 @@ const openCamera = async () => {
         <Text style={styles.conditionTitle}>Condition</Text>
         <View style={styles.conditionRow}>
           {CONDITIONS.map((c, i) => (
-            <TouchableOpacity
-              key={c.label}
-              style={[styles.conditionButton, { backgroundColor: barterConditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]}
-              onPress={() => setBarterConditionIndex(i)}
-            >
+            <TouchableOpacity key={c.label} style={[styles.conditionButton, { backgroundColor: barterConditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]} onPress={() => setBarterConditionIndex(i)}>
               <Text style={[styles.conditionText, { color: barterConditionIndex === i ? '#fff' : '#666' }]}>{c.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-        {cameraOpen ? (
-            <View style={styles.cameraContainer}>
-              <CameraView style={styles.camera} facing="back">
-                <View style={styles.cameraOverlay}>
-                  <View style={styles.cameraFrame} />
-                  <Text style={styles.cameraHint}>Point at card to identify</Text>
-                  <TouchableOpacity style={styles.cameraClose} onPress={() => setCameraOpen(false)}>
-                    <Text style={styles.cameraCloseText}>✕ Close Camera</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.cameraScanButton} onPress={() => {
-                    setCameraOpen(false);
-                    alert('Camera card recognition will connect to the Pokemon TCG image API. Coming in final build.');
-                  }}>
-                    <Text style={styles.cameraScanButtonText}>📷 Scan Card</Text>
-                  </TouchableOpacity>
-                </View>
-              </CameraView>
-            </View>
-          ) : (
-            <View style={styles.searchRow}>
-              <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
-                <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
-              </TouchableOpacity>
-              <TextInput style={styles.input} placeholder="Search card name..." value={query} onChangeText={setQuery} />
-              <TouchableOpacity style={styles.cameraButton} onPress={openCamera}>
-                <Text style={styles.micIcon}>📷</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={searchCards}>
-                <Text style={styles.buttonText}>Search</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+        <View style={styles.searchRow}>
+          <TextInput style={styles.input} placeholder="Search card name..." value={barterQuery} onChangeText={setBarterQuery} />
+          <TouchableOpacity style={styles.button} onPress={searchBarterCards}>
+            <Text style={styles.buttonText}>Search</Text>
+          </TouchableOpacity>
+        </View>
         {barterLoading && <ActivityIndicator size="large" color="#e63946" />}
         <FlatList
           data={barterResults}
@@ -385,7 +366,7 @@ const openCamera = async () => {
               <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('my'); setScreen(SCREENS.BARTER_SEARCH); }}>
                 <Text style={styles.addCardButtonText}>+ Add Card</Text>
               </TouchableOpacity>
-             <View style={styles.percentageRow}>
+              <View style={styles.percentageRow}>
                 <TouchableOpacity style={styles.percentageButton} onPress={() => setMyPercentage(Math.max(10, myPercentage - 1))}>
                   <Text style={styles.percentageButtonText}>−</Text>
                 </TouchableOpacity>
@@ -417,7 +398,7 @@ const openCamera = async () => {
               <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('their'); setScreen(SCREENS.BARTER_SEARCH); }}>
                 <Text style={styles.addCardButtonText}>+ Add Card</Text>
               </TouchableOpacity>
-           <View style={styles.percentageRow}>
+              <View style={styles.percentageRow}>
                 <TouchableOpacity style={styles.percentageButton} onPress={() => setTheirPercentage(Math.max(10, theirPercentage - 1))}>
                   <Text style={styles.percentageButtonText}>−</Text>
                 </TouchableOpacity>
@@ -515,15 +496,38 @@ const openCamera = async () => {
 
       {screen === SCREENS.SEARCH && (
         <>
-          <View style={styles.searchRow}>
-            <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
-              <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
-            </TouchableOpacity>
-            <TextInput style={styles.input} placeholder="Search card name..." value={query} onChangeText={setQuery} />
-            <TouchableOpacity style={styles.button} onPress={searchCards}>
-              <Text style={styles.buttonText}>Search</Text>
-            </TouchableOpacity>
-          </View>
+          {cameraOpen ? (
+            <View style={styles.cameraContainer}>
+              <CameraView style={styles.camera} facing="back">
+                <View style={styles.cameraOverlay}>
+                  <View style={styles.cameraFrame} />
+                  <Text style={styles.cameraHint}>Point at card to identify</Text>
+                  <TouchableOpacity style={styles.cameraClose} onPress={() => setCameraOpen(false)}>
+                    <Text style={styles.cameraCloseText}>✕ Close Camera</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cameraScanButton} onPress={() => {
+                    setCameraOpen(false);
+                    alert('Camera card recognition connects to Pokemon TCG image API. Coming in final build.');
+                  }}>
+                    <Text style={styles.cameraScanButtonText}>📷 Scan Card</Text>
+                  </TouchableOpacity>
+                </View>
+              </CameraView>
+            </View>
+          ) : (
+            <View style={styles.searchRow}>
+              <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
+                <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
+              </TouchableOpacity>
+              <TextInput style={styles.input} placeholder="Search card name..." value={query} onChangeText={setQuery} />
+              <TouchableOpacity style={styles.cameraButton} onPress={openCamera}>
+                <Text style={styles.micIcon}>📷</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={searchCards}>
+                <Text style={styles.buttonText}>Search</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {listening && <Text style={styles.listeningText}>Listening...</Text>}
           {loading && <ActivityIndicator size="large" color="#e63946" />}
           <FlatList
@@ -559,6 +563,32 @@ const openCamera = async () => {
             <Image source={{ uri: selectedCard.images.large }} style={styles.largeImage} />
             <Text style={styles.cardName}>{selectedCard.name}</Text>
             <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
+
+            <View style={styles.variantBox}>
+              <Text style={styles.variantTitle}>⚠ Confirm Print Variant</Text>
+              <Text style={styles.variantSubtitle}>Price varies significantly by variant</Text>
+              <View style={styles.variantGrid}>
+                {VARIANTS.map((variant) => (
+                  <TouchableOpacity
+                    key={variant.key}
+                    style={[styles.variantButton, selectedVariant === variant.key && styles.variantButtonActive, variant.premium && selectedVariant !== variant.key && styles.variantButtonPremium]}
+                    onPress={() => setSelectedVariant(variant.key)}
+                  >
+                    {variant.premium && <Text style={styles.variantPremiumBadge}>★ </Text>}
+                    <Text style={[styles.variantLabel, selectedVariant === variant.key && styles.variantLabelActive]}>{variant.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {selectedVariant && (
+                <View style={styles.variantSelected}>
+                  <Text style={styles.variantSelectedText}>
+                    {['1st_edition', 'shadowless', 'special_illustration'].includes(selectedVariant)
+                      ? '⚠ Premium variant — verify carefully before pricing'
+                      : '✓ Variant confirmed'}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             <View style={styles.gradedToggleRow}>
               <TouchableOpacity style={[styles.gradedToggle, !isGraded && styles.gradedToggleActive]} onPress={() => setIsGraded(false)}>
@@ -695,6 +725,16 @@ const styles = StyleSheet.create({
   micButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
   micButtonActive: { backgroundColor: '#ffd6d6' },
   micIcon: { fontSize: 18 },
+  cameraButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
+  cameraContainer: { width: '100%', height: 300, borderRadius: 12, overflow: 'hidden', marginBottom: 20 },
+  camera: { flex: 1 },
+  cameraOverlay: { flex: 1, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+  cameraFrame: { width: 200, height: 140, borderWidth: 2, borderColor: '#fff', borderRadius: 8, marginTop: 20 },
+  cameraHint: { color: '#fff', fontSize: 14, fontWeight: 'bold', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
+  cameraClose: { backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  cameraCloseText: { color: '#fff', fontWeight: 'bold' },
+  cameraScanButton: { backgroundColor: '#e63946', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+  cameraScanButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   listeningText: { textAlign: 'center', color: '#e63946', marginBottom: 10, fontWeight: 'bold' },
   input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginRight: 10 },
   button: { backgroundColor: '#e63946', padding: 10, borderRadius: 8, justifyContent: 'center' },
@@ -710,6 +750,18 @@ const styles = StyleSheet.create({
   languageBadge: { backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 10 },
   languageBadgeText: { fontSize: 13, color: '#444' },
   largeImage: { width: 200, height: 280, borderRadius: 8, marginBottom: 15 },
+  variantBox: { width: '100%', backgroundColor: '#fffbf0', borderWidth: 1, borderColor: '#f4a261', borderRadius: 10, padding: 15, marginVertical: 15 },
+  variantTitle: { fontSize: 15, fontWeight: 'bold', color: '#c77b2e', marginBottom: 4 },
+  variantSubtitle: { fontSize: 12, color: '#999', marginBottom: 12 },
+  variantGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  variantButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center' },
+  variantButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
+  variantButtonPremium: { borderColor: '#f4a261' },
+  variantPremiumBadge: { fontSize: 10, color: '#f4a261' },
+  variantLabel: { fontSize: 12, color: '#444', fontWeight: 'bold' },
+  variantLabelActive: { color: '#fff' },
+  variantSelected: { marginTop: 10, backgroundColor: '#fff3cd', padding: 8, borderRadius: 6 },
+  variantSelectedText: { fontSize: 12, color: '#856404' },
   gradedToggleRow: { flexDirection: 'row', marginVertical: 15, borderWidth: 1, borderColor: '#e63946', borderRadius: 8, overflow: 'hidden', width: '100%' },
   gradedToggle: { flex: 1, padding: 10, alignItems: 'center', backgroundColor: '#fff' },
   gradedToggleActive: { backgroundColor: '#e63946' },
@@ -796,14 +848,5 @@ const styles = StyleSheet.create({
   deltaNeg: { backgroundColor: '#fff3f3' },
   deltaText: { fontSize: 20, fontWeight: 'bold', color: '#222' },
   clearButton: { marginTop: 15, marginBottom: 30, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center' },
-  cameraContainer: { width: '100%', height: 300, borderRadius: 12, overflow: 'hidden', marginBottom: 20 },
-  camera: { flex: 1 },
-  cameraOverlay: { flex: 1, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
-  cameraFrame: { width: 200, height: 140, borderWidth: 2, borderColor: '#fff', borderRadius: 8, marginTop: 20 },
-  cameraHint: { color: '#fff', fontSize: 14, fontWeight: 'bold', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
-  cameraClose: { backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
-  cameraCloseText: { color: '#fff', fontWeight: 'bold' },
-  cameraScanButton: { backgroundColor: '#e63946', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
-  cameraScanButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  cameraButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },clearButtonText: { color: '#999', fontWeight: 'bold' },
+  clearButtonText: { color: '#999', fontWeight: 'bold' },
 });
