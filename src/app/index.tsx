@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const CONDITIONS = [
   { label: 'Poor', multiplier: 0.1 },
@@ -82,6 +83,8 @@ export default function Index() {
   const [sealedProduct, setSealedProduct] = useState(null);
   const [sealedConditionIndex, setSealedConditionIndex] = useState(0);
   const [sealedLoading, setSealedLoading] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [myDeck, setMyDeck] = useState([]);
   const [theirDeck, setTheirDeck] = useState([]);
   const [barterTarget, setBarterTarget] = useState('my');
@@ -112,7 +115,16 @@ export default function Index() {
     setListening(true);
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
   };
-
+const openCamera = async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        alert('Camera permission is required for card scanning.');
+        return;
+      }
+    }
+    setCameraOpen(true);
+  };
   const fetchExchangeRates = async () => {
     setRatesLoading(true);
     try {
@@ -295,12 +307,38 @@ export default function Index() {
             </TouchableOpacity>
           ))}
         </View>
-        <View style={styles.searchRow}>
-          <TextInput style={styles.input} placeholder="Search card name..." value={barterQuery} onChangeText={setBarterQuery} />
-          <TouchableOpacity style={styles.button} onPress={searchBarterCards}>
-            <Text style={styles.buttonText}>Search</Text>
-          </TouchableOpacity>
-        </View>
+        {cameraOpen ? (
+            <View style={styles.cameraContainer}>
+              <CameraView style={styles.camera} facing="back">
+                <View style={styles.cameraOverlay}>
+                  <View style={styles.cameraFrame} />
+                  <Text style={styles.cameraHint}>Point at card to identify</Text>
+                  <TouchableOpacity style={styles.cameraClose} onPress={() => setCameraOpen(false)}>
+                    <Text style={styles.cameraCloseText}>✕ Close Camera</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cameraScanButton} onPress={() => {
+                    setCameraOpen(false);
+                    alert('Camera card recognition will connect to the Pokemon TCG image API. Coming in final build.');
+                  }}>
+                    <Text style={styles.cameraScanButtonText}>📷 Scan Card</Text>
+                  </TouchableOpacity>
+                </View>
+              </CameraView>
+            </View>
+          ) : (
+            <View style={styles.searchRow}>
+              <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
+                <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
+              </TouchableOpacity>
+              <TextInput style={styles.input} placeholder="Search card name..." value={query} onChangeText={setQuery} />
+              <TouchableOpacity style={styles.cameraButton} onPress={openCamera}>
+                <Text style={styles.micIcon}>📷</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={searchCards}>
+                <Text style={styles.buttonText}>Search</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         {barterLoading && <ActivityIndicator size="large" color="#e63946" />}
         <FlatList
           data={barterResults}
@@ -758,5 +796,14 @@ const styles = StyleSheet.create({
   deltaNeg: { backgroundColor: '#fff3f3' },
   deltaText: { fontSize: 20, fontWeight: 'bold', color: '#222' },
   clearButton: { marginTop: 15, marginBottom: 30, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center' },
-  clearButtonText: { color: '#999', fontWeight: 'bold' },
+  cameraContainer: { width: '100%', height: 300, borderRadius: 12, overflow: 'hidden', marginBottom: 20 },
+  camera: { flex: 1 },
+  cameraOverlay: { flex: 1, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+  cameraFrame: { width: 200, height: 140, borderWidth: 2, borderColor: '#fff', borderRadius: 8, marginTop: 20 },
+  cameraHint: { color: '#fff', fontSize: 14, fontWeight: 'bold', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
+  cameraClose: { backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  cameraCloseText: { color: '#fff', fontWeight: 'bold' },
+  cameraScanButton: { backgroundColor: '#e63946', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+  cameraScanButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  cameraButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },clearButtonText: { color: '#999', fontWeight: 'bold' },
 });
