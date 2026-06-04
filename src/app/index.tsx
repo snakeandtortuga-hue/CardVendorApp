@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 
 export default function Index() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [anchorSource, setAnchorSource] = useState('tcgplayer');
 
   const searchCards = async () => {
     if (!query.trim()) return;
@@ -23,15 +24,31 @@ export default function Index() {
 
   const selectCard = (card) => {
     setSelectedCard(card);
+    setAnchorSource('tcgplayer');
   };
 
-  const getPrice = (card) => {
-    if (!card.tcgplayer || !card.tcgplayer.prices) return null;
-    const prices = card.tcgplayer.prices;
-    if (prices.holofoil) return prices.holofoil.market;
-    if (prices.normal) return prices.normal.market;
-    if (prices.reverseHolofoil) return prices.reverseHolofoil.market;
+  const getPrice = (card, source) => {
+    if (source === 'tcgplayer') {
+      if (!card.tcgplayer || !card.tcgplayer.prices) return null;
+      const prices = card.tcgplayer.prices;
+      if (prices.holofoil) return prices.holofoil.market;
+      if (prices.normal) return prices.normal.market;
+      if (prices.reverseHolofoil) return prices.reverseHolofoil.market;
+      return null;
+    }
+    if (source === 'pricecharting') return null;
+    if (source === 'ebay_sold') return null;
+    if (source === 'ebay_30day') return null;
     return null;
+  };
+
+  const getAnchorPrice = () => getPrice(selectedCard, anchorSource);
+
+  const sourceLabel = {
+    tcgplayer: 'TCGPlayer',
+    pricecharting: 'PriceCharting',
+    ebay_sold: 'eBay Sold',
+    ebay_30day: 'eBay 30-Day',
   };
 
   return (
@@ -70,32 +87,52 @@ export default function Index() {
           />
         </>
       ) : (
-        <View style={styles.detailContainer}>
+        <ScrollView>
           <TouchableOpacity onPress={() => setSelectedCard(null)}>
             <Text style={styles.back}>← Back to results</Text>
           </TouchableOpacity>
-          <Image source={{ uri: selectedCard.images.large }} style={styles.largeImage} />
-          <Text style={styles.cardName}>{selectedCard.name}</Text>
-          <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
+          <View style={styles.detailContainer}>
+            <Image source={{ uri: selectedCard.images.large }} style={styles.largeImage} />
+            <Text style={styles.cardName}>{selectedCard.name}</Text>
+            <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
 
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>TCGPlayer Market Price</Text>
-            {getPrice(selectedCard) ? (
-              <Text style={styles.price}>${getPrice(selectedCard).toFixed(2)}</Text>
-            ) : (
-              <Text style={styles.noPrice}>No price data available</Text>
-            )}
-          </View>
+            <View style={styles.priceBox}>
+              <Text style={styles.priceLabel}>{sourceLabel[anchorSource]} Market Price</Text>
+              {getAnchorPrice() ? (
+                <Text style={styles.price}>${getAnchorPrice().toFixed(2)}</Text>
+              ) : (
+                <Text style={styles.noPrice}>No price data available</Text>
+              )}
+            </View>
 
-          <View style={styles.vendorBox}>
-            <Text style={styles.vendorLabel}>Your Price (80%)</Text>
-            {getPrice(selectedCard) ? (
-              <Text style={styles.vendorPrice}>${(getPrice(selectedCard) * 0.8).toFixed(2)}</Text>
-            ) : (
-              <Text style={styles.noPrice}>—</Text>
-            )}
+            <View style={styles.vendorBox}>
+              <Text style={styles.vendorLabel}>Your Price (80%)</Text>
+              {getAnchorPrice() ? (
+                <Text style={styles.vendorPrice}>${(getAnchorPrice() * 0.8).toFixed(2)}</Text>
+              ) : (
+                <Text style={styles.noPrice}>—</Text>
+              )}
+            </View>
+
+            <Text style={styles.sourcesTitle}>Price Sources</Text>
+            <View style={styles.sourcesRow}>
+              {['tcgplayer', 'pricecharting', 'ebay_sold', 'ebay_30day'].map((source) => (
+                <TouchableOpacity
+                  key={source}
+                  style={[styles.sourceButton, anchorSource === source && styles.sourceButtonActive]}
+                  onPress={() => setAnchorSource(source)}
+                >
+                  <Text style={[styles.sourceButtonText, anchorSource === source && styles.sourceButtonTextActive]}>
+                    {sourceLabel[source]}
+                  </Text>
+                  <Text style={[styles.sourcePrice, anchorSource === source && styles.sourceButtonTextActive]}>
+                    {getPrice(selectedCard, source) ? `$${getPrice(selectedCard, source).toFixed(2)}` : 'N/A'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -124,4 +161,11 @@ const styles = StyleSheet.create({
   vendorBox: { marginTop: 10, alignItems: 'center', backgroundColor: '#fff3f3', padding: 15, borderRadius: 10, width: '100%' },
   vendorLabel: { fontSize: 14, color: '#e63946', marginBottom: 5 },
   vendorPrice: { fontSize: 32, fontWeight: 'bold', color: '#e63946' },
+  sourcesTitle: { marginTop: 20, marginBottom: 10, fontSize: 16, fontWeight: 'bold', alignSelf: 'flex-start' },
+  sourcesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: '100%' },
+  sourceButton: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, minWidth: '45%', alignItems: 'center' },
+  sourceButtonActive: { borderColor: '#e63946', backgroundColor: '#fff3f3' },
+  sourceButtonText: { fontSize: 13, color: '#666' },
+  sourceButtonTextActive: { color: '#e63946', fontWeight: 'bold' },
+  sourcePrice: { fontSize: 15, fontWeight: 'bold', color: '#222', marginTop: 3 },
 });
