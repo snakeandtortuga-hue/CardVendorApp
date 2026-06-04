@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 
+const CONDITIONS = [
+  { label: 'Poor', multiplier: 0.1 },
+  { label: 'HP', multiplier: 0.25 },
+  { label: 'MP', multiplier: 0.45 },
+  { label: 'LP', multiplier: 0.65 },
+  { label: 'GD', multiplier: 0.8 },
+  { label: 'NM', multiplier: 0.9 },
+  { label: 'Mint', multiplier: 1.0 },
+];
+
+const CONDITION_COLORS = ['#e63946', '#e63946', '#f4a261', '#f4a261', '#a8c686', '#4caf50', '#2e7d32'];
+
 export default function Index() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [anchorSource, setAnchorSource] = useState('tcgplayer');
+  const [conditionIndex, setConditionIndex] = useState(5);
 
   const searchCards = async () => {
     if (!query.trim()) return;
@@ -25,6 +38,7 @@ export default function Index() {
   const selectCard = (card) => {
     setSelectedCard(card);
     setAnchorSource('tcgplayer');
+    setConditionIndex(5);
   };
 
   const getPrice = (card, source) => {
@@ -36,13 +50,14 @@ export default function Index() {
       if (prices.reverseHolofoil) return prices.reverseHolofoil.market;
       return null;
     }
-    if (source === 'pricecharting') return null;
-    if (source === 'ebay_sold') return null;
-    if (source === 'ebay_30day') return null;
     return null;
   };
 
   const getAnchorPrice = () => getPrice(selectedCard, anchorSource);
+
+ const conditionMultiplier = CONDITIONS[conditionIndex].multiplier;
+const anchorPrice = selectedCard ? getAnchorPrice() : null;
+const vendorPrice = anchorPrice ? anchorPrice * 0.8 * conditionMultiplier : null;
 
   const sourceLabel = {
     tcgplayer: 'TCGPlayer',
@@ -105,10 +120,33 @@ export default function Index() {
               )}
             </View>
 
+            <View style={styles.conditionContainer}>
+              <Text style={styles.conditionTitle}>Condition</Text>
+              <View style={styles.conditionRow}>
+                {CONDITIONS.map((c, i) => (
+                  <TouchableOpacity
+                    key={c.label}
+                    style={[
+                      styles.conditionButton,
+                      { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }
+                    ]}
+                    onPress={() => setConditionIndex(i)}
+                  >
+                    <Text style={[
+                      styles.conditionText,
+                      { color: conditionIndex === i ? '#fff' : '#666' }
+                    ]}>
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             <View style={styles.vendorBox}>
-              <Text style={styles.vendorLabel}>Your Price (80%)</Text>
-              {getAnchorPrice() ? (
-                <Text style={styles.vendorPrice}>${(getAnchorPrice() * 0.8).toFixed(2)}</Text>
+              <Text style={styles.vendorLabel}>Your Price (80% — {CONDITIONS[conditionIndex].label})</Text>
+              {vendorPrice ? (
+                <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text>
               ) : (
                 <Text style={styles.noPrice}>—</Text>
               )}
@@ -158,6 +196,11 @@ const styles = StyleSheet.create({
   priceLabel: { fontSize: 14, color: '#666', marginBottom: 5 },
   price: { fontSize: 32, fontWeight: 'bold', color: '#222' },
   noPrice: { fontSize: 16, color: '#999' },
+  conditionContainer: { marginTop: 20, width: '100%' },
+  conditionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  conditionRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  conditionButton: { padding: 8, borderRadius: 6, alignItems: 'center', minWidth: 40 },
+  conditionText: { fontSize: 12, fontWeight: 'bold' },
   vendorBox: { marginTop: 10, alignItems: 'center', backgroundColor: '#fff3f3', padding: 15, borderRadius: 10, width: '100%' },
   vendorLabel: { fontSize: 14, color: '#e63946', marginBottom: 5 },
   vendorPrice: { fontSize: 32, fontWeight: 'bold', color: '#e63946' },
