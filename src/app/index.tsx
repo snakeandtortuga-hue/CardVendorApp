@@ -51,7 +51,16 @@ const PSA_GRADES = ['1', '1.5', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 const BGS_GRADES = ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'];
 const CGC_GRADES = ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10'];
 
+const SEALED_CONDITIONS = [
+  { label: 'Sealed (Mint)', multiplier: 1.0 },
+  { label: 'Sealed (Damaged)', multiplier: 0.7 },
+  { label: 'Open', multiplier: 0.4 },
+];
+
+const SCREENS = { SEARCH: 'search', CARD: 'card', SEALED: 'sealed' };
+
 export default function Index() {
+  const [screen, setScreen] = useState(SCREENS.SEARCH);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -69,6 +78,10 @@ export default function Index() {
   const [certNumber, setCertNumber] = useState('');
   const [certLoading, setCertLoading] = useState(false);
   const [certResult, setCertResult] = useState(null);
+  const [sealedQuery, setSealedQuery] = useState('');
+  const [sealedProduct, setSealedProduct] = useState(null);
+  const [sealedConditionIndex, setSealedConditionIndex] = useState(0);
+  const [sealedLoading, setSealedLoading] = useState(false);
 
   useEffect(() => {
     loadPercentage();
@@ -76,9 +89,7 @@ export default function Index() {
   }, []);
 
   useSpeechRecognitionEvent('result', (event) => {
-    if (event.results[0]) {
-      setQuery(event.results[0].transcript);
-    }
+    if (event.results[0]) setQuery(event.results[0].transcript);
   });
 
   useSpeechRecognitionEvent('end', () => {
@@ -88,10 +99,7 @@ export default function Index() {
 
   const startListening = async () => {
     const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-    if (!result.granted) {
-      alert('Microphone permission is required for voice search.');
-      return;
-    }
+    if (!result.granted) { alert('Microphone permission required.'); return; }
     setListening(true);
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
   };
@@ -102,9 +110,7 @@ export default function Index() {
       const response = await fetch('https://open.er-api.com/v6/latest/USD');
       const data = await response.json();
       if (data.rates) setExchangeRates(data.rates);
-    } catch (error) {
-      console.error('Failed to fetch exchange rates', error);
-    }
+    } catch (error) { console.error('Failed to fetch exchange rates', error); }
     setRatesLoading(false);
   };
 
@@ -117,9 +123,7 @@ export default function Index() {
     try {
       const value = await AsyncStorage.getItem('vendor_percentage');
       if (value !== null) setPercentage(Number(value));
-    } catch (error) {
-      console.log('No saved percentage, using default 80%');
-    }
+    } catch (error) { console.log('No saved percentage'); }
   };
 
   const savePercentage = async (newPercentage) => {
@@ -135,10 +139,23 @@ export default function Index() {
       const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20`);
       const data = await response.json();
       setResults(data.data || []);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
     setLoading(false);
+  };
+
+  const searchSealedProduct = async () => {
+    if (!sealedQuery.trim()) return;
+    setSealedLoading(true);
+    setSealedProduct(null);
+    await new Promise(r => setTimeout(r, 800));
+    setSealedProduct({
+      name: sealedQuery,
+      type: 'Booster Box',
+      set: 'Unknown Set',
+      price: null,
+      note: 'PriceCharting API connection coming soon.',
+    });
+    setSealedLoading(false);
   };
 
   const selectCard = (card) => {
@@ -148,6 +165,7 @@ export default function Index() {
     setIsGraded(false);
     setCertNumber('');
     setCertResult(null);
+    setScreen(SCREENS.CARD);
   };
 
   const lookupCert = async () => {
@@ -156,7 +174,6 @@ export default function Index() {
     setCertResult(null);
     await new Promise(r => setTimeout(r, 800));
     setCertResult({
-      status: 'pending',
       message: `${selectedGrader} cert lookup requires API agreement. Grade ${selectedGrade} recorded manually.`,
     });
     setCertLoading(false);
@@ -165,8 +182,7 @@ export default function Index() {
   const getGrades = () => {
     if (selectedGrader === 'PSA') return PSA_GRADES;
     if (selectedGrader === 'BGS') return BGS_GRADES;
-    if (selectedGrader === 'CGC') return CGC_GRADES;
-    return PSA_GRADES;
+    return CGC_GRADES;
   };
 
   const getPrice = (card, source) => {
@@ -185,21 +201,17 @@ export default function Index() {
   const conditionMultiplier = isGraded ? 1.0 : CONDITIONS[conditionIndex].multiplier;
   const anchorPrice = selectedCard ? getAnchorPrice() : null;
   const vendorPrice = anchorPrice ? anchorPrice * (percentage / 100) * conditionMultiplier : null;
+  const isPhase2Language = !['en', 'ja'].includes(language);
 
   const sourceLabel = {
-    tcgplayer: 'TCGPlayer',
-    pricecharting: 'PriceCharting',
-    ebay_sold: 'eBay Sold',
-    ebay_30day: 'eBay 30-Day',
-    yahoo_japan: 'Yahoo Japan',
-    mercari_japan: 'Mercari JP',
+    tcgplayer: 'TCGPlayer', pricecharting: 'PriceCharting',
+    ebay_sold: 'eBay Sold', ebay_30day: 'eBay 30-Day',
+    yahoo_japan: 'Yahoo Japan', mercari_japan: 'Mercari JP',
   };
 
   const availableSources = language === 'ja'
     ? ['yahoo_japan', 'mercari_japan', 'pricecharting']
     : ['tcgplayer', 'pricecharting', 'ebay_sold', 'ebay_30day'];
-
-  const isPhase2Language = !['en', 'ja'].includes(language);
 
   const formatCurrency = (amount, code) => {
     if (amount === null) return 'N/A';
@@ -207,9 +219,79 @@ export default function Index() {
     return `${CURRENCIES.find(c => c.code === code)?.symbol}${amount.toFixed(2)}`;
   };
 
+  const renderTabBar = () => (
+    <View style={styles.tabBar}>
+      <TouchableOpacity
+        style={[styles.tab, screen === SCREENS.SEARCH && styles.tabActive]}
+        onPress={() => setScreen(SCREENS.SEARCH)}
+      >
+        <Text style={[styles.tabText, screen === SCREENS.SEARCH && styles.tabTextActive]}>🔍 Singles</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, screen === SCREENS.SEALED && styles.tabActive]}
+        onPress={() => setScreen(SCREENS.SEALED)}
+      >
+        <Text style={[styles.tabText, screen === SCREENS.SEALED && styles.tabTextActive]}>📦 Sealed</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (screen === SCREENS.SEALED) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Card Vendor App</Text>
+        {renderTabBar()}
+        <ScrollView>
+          <Text style={styles.sectionTitle}>Sealed Product Lookup</Text>
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Search product name or scan barcode..."
+              value={sealedQuery}
+              onChangeText={setSealedQuery}
+            />
+            <TouchableOpacity style={styles.button} onPress={searchSealedProduct}>
+              <Text style={styles.buttonText}>Search</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.barcodeButton}>
+            <Text style={styles.barcodeButtonText}>📷 Scan Barcode</Text>
+            <Text style={styles.barcodeNote}>Available on mobile device</Text>
+          </TouchableOpacity>
+          {sealedLoading && <ActivityIndicator size="large" color="#e63946" />}
+          {sealedProduct && (
+            <View style={styles.sealedResult}>
+              <Text style={styles.sealedName}>{sealedProduct.name}</Text>
+              <Text style={styles.sealedType}>{sealedProduct.type} — {sealedProduct.set}</Text>
+              <Text style={styles.sectionTitle}>Sealed Condition</Text>
+              <View style={styles.sealedConditionRow}>
+                {SEALED_CONDITIONS.map((c, i) => (
+                  <TouchableOpacity
+                    key={c.label}
+                    style={[styles.sealedCondButton, sealedConditionIndex === i && styles.sealedCondButtonActive]}
+                    onPress={() => setSealedConditionIndex(i)}
+                  >
+                    <Text style={[styles.sealedCondText, sealedConditionIndex === i && styles.sealedCondTextActive]}>
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>PriceCharting Market Price</Text>
+                <Text style={styles.noPrice}>{sealedProduct.note}</Text>
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Card Vendor App</Text>
+      {renderTabBar()}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
         <View style={styles.languageRow}>
@@ -220,24 +302,19 @@ export default function Index() {
               onPress={() => setLanguage(lang.code)}
             >
               <Text style={styles.langFlag}>{lang.flag}</Text>
-              <Text style={[styles.langLabel, language === lang.code && styles.langLabelActive]}>
-                {lang.label}
-              </Text>
+              <Text style={[styles.langLabel, language === lang.code && styles.langLabelActive]}>{lang.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
       {isPhase2Language && (
-        <Text style={styles.phase2Note}>⚠ Full pricing for this language coming in Phase 2. Showing English prices.</Text>
+        <Text style={styles.phase2Note}>⚠ Full pricing for this language coming in Phase 2.</Text>
       )}
 
-      {!selectedCard ? (
+      {screen === SCREENS.SEARCH && (
         <>
           <View style={styles.searchRow}>
-            <TouchableOpacity
-              style={[styles.micButton, listening && styles.micButtonActive]}
-              onPress={startListening}
-            >
+            <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
               <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
             </TouchableOpacity>
             <TextInput
@@ -269,9 +346,11 @@ export default function Index() {
             )}
           />
         </>
-      ) : (
+      )}
+
+      {screen === SCREENS.CARD && selectedCard && (
         <ScrollView>
-          <TouchableOpacity onPress={() => setSelectedCard(null)}>
+          <TouchableOpacity onPress={() => setScreen(SCREENS.SEARCH)}>
             <Text style={styles.back}>← Back to results</Text>
           </TouchableOpacity>
           <View style={styles.detailContainer}>
@@ -285,16 +364,10 @@ export default function Index() {
             <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
 
             <View style={styles.gradedToggleRow}>
-              <TouchableOpacity
-                style={[styles.gradedToggle, !isGraded && styles.gradedToggleActive]}
-                onPress={() => setIsGraded(false)}
-              >
+              <TouchableOpacity style={[styles.gradedToggle, !isGraded && styles.gradedToggleActive]} onPress={() => setIsGraded(false)}>
                 <Text style={[styles.gradedToggleText, !isGraded && styles.gradedToggleTextActive]}>Raw Card</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.gradedToggle, isGraded && styles.gradedToggleActive]}
-                onPress={() => setIsGraded(true)}
-              >
+              <TouchableOpacity style={[styles.gradedToggle, isGraded && styles.gradedToggleActive]} onPress={() => setIsGraded(true)}>
                 <Text style={[styles.gradedToggleText, isGraded && styles.gradedToggleTextActive]}>Graded Card</Text>
               </TouchableOpacity>
             </View>
@@ -304,40 +377,24 @@ export default function Index() {
                 <Text style={styles.sectionTitle}>Grading Company</Text>
                 <View style={styles.graderRow}>
                   {GRADERS.map((g) => (
-                    <TouchableOpacity
-                      key={g}
-                      style={[styles.graderButton, selectedGrader === g && styles.graderButtonActive]}
-                      onPress={() => setSelectedGrader(g)}
-                    >
+                    <TouchableOpacity key={g} style={[styles.graderButton, selectedGrader === g && styles.graderButtonActive]} onPress={() => setSelectedGrader(g)}>
                       <Text style={[styles.graderText, selectedGrader === g && styles.graderTextActive]}>{g}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-
                 <Text style={styles.sectionTitle}>Grade</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.gradeRow}>
                     {getGrades().map((g) => (
-                      <TouchableOpacity
-                        key={g}
-                        style={[styles.gradeButton, selectedGrade === g && styles.gradeButtonActive]}
-                        onPress={() => setSelectedGrade(g)}
-                      >
+                      <TouchableOpacity key={g} style={[styles.gradeButton, selectedGrade === g && styles.gradeButtonActive]} onPress={() => setSelectedGrade(g)}>
                         <Text style={[styles.gradeText, selectedGrade === g && styles.gradeTextActive]}>{g}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </ScrollView>
-
                 <Text style={styles.sectionTitle}>Cert Number (optional)</Text>
                 <View style={styles.certRow}>
-                  <TextInput
-                    style={styles.certInput}
-                    placeholder="Enter cert number..."
-                    value={certNumber}
-                    onChangeText={setCertNumber}
-                    keyboardType="numeric"
-                  />
+                  <TextInput style={styles.certInput} placeholder="Enter cert number..." value={certNumber} onChangeText={setCertNumber} keyboardType="numeric" />
                   <TouchableOpacity style={styles.certButton} onPress={lookupCert}>
                     {certLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.certButtonText}>Lookup</Text>}
                   </TouchableOpacity>
@@ -347,7 +404,6 @@ export default function Index() {
                     <Text style={styles.certResultText}>⚠ {certResult.message}</Text>
                   </View>
                 )}
-
                 <View style={styles.gradeSummary}>
                   <Text style={styles.gradeSummaryText}>{selectedGrader} {selectedGrade}</Text>
                 </View>
@@ -359,18 +415,10 @@ export default function Index() {
                   {CONDITIONS.map((c, i) => (
                     <TouchableOpacity
                       key={c.label}
-                      style={[
-                        styles.conditionButton,
-                        { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }
-                      ]}
+                      style={[styles.conditionButton, { backgroundColor: conditionIndex === i ? CONDITION_COLORS[i] : '#eee' }]}
                       onPress={() => setConditionIndex(i)}
                     >
-                      <Text style={[
-                        styles.conditionText,
-                        { color: conditionIndex === i ? '#fff' : '#666' }
-                      ]}>
-                        {c.label}
-                      </Text>
+                      <Text style={[styles.conditionText, { color: conditionIndex === i ? '#fff' : '#666' }]}>{c.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -379,34 +427,18 @@ export default function Index() {
 
             <View style={styles.priceBox}>
               <Text style={styles.priceLabel}>{sourceLabel[anchorSource]} Market Price</Text>
-              {getAnchorPrice() ? (
-                <Text style={styles.price}>${getAnchorPrice().toFixed(2)}</Text>
-              ) : (
-                <Text style={styles.noPrice}>No price data available</Text>
-              )}
+              {getAnchorPrice() ? <Text style={styles.price}>${getAnchorPrice().toFixed(2)}</Text> : <Text style={styles.noPrice}>No price data available</Text>}
             </View>
 
             <View style={styles.vendorBox}>
-              <Text style={styles.vendorLabel}>
-                Your Price ({percentage}% — {isGraded ? `${selectedGrader} ${selectedGrade}` : CONDITIONS[conditionIndex].label})
-              </Text>
-              {vendorPrice ? (
-                <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text>
-              ) : (
-                <Text style={styles.noPrice}>—</Text>
-              )}
+              <Text style={styles.vendorLabel}>Your Price ({percentage}% — {isGraded ? `${selectedGrader} ${selectedGrade}` : CONDITIONS[conditionIndex].label})</Text>
+              {vendorPrice ? <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text> : <Text style={styles.noPrice}>—</Text>}
               <View style={styles.percentageRow}>
-                <TouchableOpacity
-                  style={styles.percentageButton}
-                  onPress={() => savePercentage(Math.max(10, percentage - 1))}
-                >
+                <TouchableOpacity style={styles.percentageButton} onPress={() => savePercentage(Math.max(10, percentage - 1))}>
                   <Text style={styles.percentageButtonText}>−</Text>
                 </TouchableOpacity>
                 <Text style={styles.percentageValue}>{percentage}%</Text>
-                <TouchableOpacity
-                  style={styles.percentageButton}
-                  onPress={() => savePercentage(Math.min(100, percentage + 1))}
-                >
+                <TouchableOpacity style={styles.percentageButton} onPress={() => savePercentage(Math.min(100, percentage + 1))}>
                   <Text style={styles.percentageButtonText}>+</Text>
                 </TouchableOpacity>
               </View>
@@ -415,9 +447,7 @@ export default function Index() {
             {anchorPrice && (
               <View style={styles.currencyBox}>
                 <Text style={styles.currencyTitle}>Currency Converter</Text>
-                {ratesLoading ? (
-                  <ActivityIndicator size="small" color="#e63946" />
-                ) : (
+                {ratesLoading ? <ActivityIndicator size="small" color="#e63946" /> : (
                   <View style={styles.currencyGrid}>
                     {CURRENCIES.filter(c => c.code !== 'USD').map((currency) => {
                       const converted = convertPrice(anchorPrice, currency.code);
@@ -425,9 +455,7 @@ export default function Index() {
                         <View key={currency.code} style={styles.currencyItem}>
                           <Text style={styles.currencyFlag}>{currency.flag}</Text>
                           <Text style={styles.currencyCode}>{currency.code}</Text>
-                          <Text style={styles.currencyAmount}>
-                            {formatCurrency(converted, currency.code)}
-                          </Text>
+                          <Text style={styles.currencyAmount}>{formatCurrency(converted, currency.code)}</Text>
                         </View>
                       );
                     })}
@@ -439,14 +467,8 @@ export default function Index() {
             <Text style={styles.sourcesTitle}>Price Sources</Text>
             <View style={styles.sourcesRow}>
               {availableSources.map((source) => (
-                <TouchableOpacity
-                  key={source}
-                  style={[styles.sourceButton, anchorSource === source && styles.sourceButtonActive]}
-                  onPress={() => setAnchorSource(source)}
-                >
-                  <Text style={[styles.sourceButtonText, anchorSource === source && styles.sourceButtonTextActive]}>
-                    {sourceLabel[source]}
-                  </Text>
+                <TouchableOpacity key={source} style={[styles.sourceButton, anchorSource === source && styles.sourceButtonActive]} onPress={() => setAnchorSource(source)}>
+                  <Text style={[styles.sourceButtonText, anchorSource === source && styles.sourceButtonTextActive]}>{sourceLabel[source]}</Text>
                   <Text style={[styles.sourcePrice, anchorSource === source && styles.sourceButtonTextActive]}>
                     {getPrice(selectedCard, source) ? `$${getPrice(selectedCard, source).toFixed(2)}` : 'N/A'}
                   </Text>
@@ -462,7 +484,12 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  tabBar: { flexDirection: 'row', marginBottom: 15, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#e63946' },
+  tab: { flex: 1, padding: 10, alignItems: 'center', backgroundColor: '#fff' },
+  tabActive: { backgroundColor: '#e63946' },
+  tabText: { fontSize: 14, color: '#e63946', fontWeight: 'bold' },
+  tabTextActive: { color: '#fff' },
   languageScroll: { marginBottom: 10 },
   languageRow: { flexDirection: 'row', gap: 8, paddingBottom: 5 },
   langButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', justifyContent: 'center' },
@@ -545,4 +572,15 @@ const styles = StyleSheet.create({
   sourceButtonText: { fontSize: 13, color: '#666' },
   sourceButtonTextActive: { color: '#e63946', fontWeight: 'bold' },
   sourcePrice: { fontSize: 15, fontWeight: 'bold', color: '#222', marginTop: 3 },
+  barcodeButton: { borderWidth: 2, borderColor: '#e63946', borderRadius: 8, borderStyle: 'dashed', padding: 20, alignItems: 'center', marginBottom: 20 },
+  barcodeButtonText: { fontSize: 18, color: '#e63946', fontWeight: 'bold' },
+  barcodeNote: { fontSize: 12, color: '#999', marginTop: 4 },
+  sealedResult: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 15 },
+  sealedName: { fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
+  sealedType: { fontSize: 14, color: '#666', marginBottom: 10 },
+  sealedConditionRow: { flexDirection: 'column', gap: 8, marginBottom: 15 },
+  sealedCondButton: { padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', backgroundColor: '#fff', alignItems: 'center' },
+  sealedCondButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
+  sealedCondText: { fontSize: 14, color: '#666', fontWeight: 'bold' },
+  sealedCondTextActive: { color: '#fff' },
 });
