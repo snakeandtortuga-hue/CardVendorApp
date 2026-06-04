@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 
 const CONDITIONS = [
   { label: 'Poor', multiplier: 0.1 },
@@ -22,12 +23,34 @@ export default function Index() {
   const [anchorSource, setAnchorSource] = useState('tcgplayer');
   const [conditionIndex, setConditionIndex] = useState(5);
   const [percentage, setPercentage] = useState(80);
+  const [listening, setListening] = useState(false);
 
   useEffect(() => {
     loadPercentage();
   }, []);
 
- const loadPercentage = async () => {
+  useSpeechRecognitionEvent('result', (event) => {
+    if (event.results[0]) {
+      setQuery(event.results[0].transcript);
+    }
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setListening(false);
+    searchCards();
+  });
+
+  const startListening = async () => {
+    const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!result.granted) {
+      alert('Microphone permission is required for voice search.');
+      return;
+    }
+    setListening(true);
+    ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: false });
+  };
+
+  const loadPercentage = async () => {
     try {
       const value = await AsyncStorage.getItem('vendor_percentage');
       if (value !== null) setPercentage(Number(value));
@@ -40,7 +63,6 @@ export default function Index() {
     setPercentage(newPercentage);
     await AsyncStorage.setItem('vendor_percentage', String(newPercentage));
   };
-   
 
   const searchCards = async () => {
     if (!query.trim()) return;
@@ -93,6 +115,12 @@ export default function Index() {
       {!selectedCard ? (
         <>
           <View style={styles.searchRow}>
+            <TouchableOpacity
+              style={[styles.micButton, listening && styles.micButtonActive]}
+              onPress={startListening}
+            >
+              <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               placeholder="Search card name..."
@@ -103,6 +131,7 @@ export default function Index() {
               <Text style={styles.buttonText}>Search</Text>
             </TouchableOpacity>
           </View>
+          {listening && <Text style={styles.listeningText}>Listening...</Text>}
           {loading && <ActivityIndicator size="large" color="#e63946" />}
           <FlatList
             data={results}
@@ -214,7 +243,11 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  searchRow: { flexDirection: 'row', marginBottom: 20 },
+  searchRow: { flexDirection: 'row', marginBottom: 20, alignItems: 'center' },
+  micButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
+  micButtonActive: { backgroundColor: '#ffd6d6' },
+  micIcon: { fontSize: 18 },
+  listeningText: { textAlign: 'center', color: '#e63946', marginBottom: 10, fontWeight: 'bold' },
   input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginRight: 10 },
   button: { backgroundColor: '#e63946', padding: 10, borderRadius: 8, justifyContent: 'center' },
   buttonText: { color: '#fff', fontWeight: 'bold' },
