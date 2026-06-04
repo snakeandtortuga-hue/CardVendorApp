@@ -15,6 +15,22 @@ const CONDITIONS = [
 
 const CONDITION_COLORS = ['#e63946', '#e63946', '#f4a261', '#f4a261', '#a8c686', '#4caf50', '#2e7d32'];
 
+const LANGUAGES = [
+  { code: 'en', label: 'English', flag: '🇺🇸' },
+  { code: 'ja', label: 'Japanese', flag: '🇯🇵' },
+  { code: 'ko', label: 'Korean', flag: '🇰🇷' },
+  { code: 'zh-hant', label: 'Chinese (T)', flag: '🇹🇼' },
+  { code: 'zh-hans', label: 'Chinese (S)', flag: '🇨🇳' },
+  { code: 'de', label: 'German', flag: '🇩🇪' },
+  { code: 'fr', label: 'French', flag: '🇫🇷' },
+  { code: 'it', label: 'Italian', flag: '🇮🇹' },
+  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
+  { code: 'pt', label: 'Portuguese', flag: '🇵🇹' },
+  { code: 'nl', label: 'Dutch', flag: '🇳🇱' },
+  { code: 'pl', label: 'Polish', flag: '🇵🇱' },
+  { code: 'ru', label: 'Russian', flag: '🇷🇺' },
+];
+
 export default function Index() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -24,6 +40,7 @@ export default function Index() {
   const [conditionIndex, setConditionIndex] = useState(5);
   const [percentage, setPercentage] = useState(80);
   const [listening, setListening] = useState(false);
+  const [language, setLanguage] = useState('en');
 
   useEffect(() => {
     loadPercentage();
@@ -69,7 +86,8 @@ export default function Index() {
     setLoading(true);
     setSelectedCard(null);
     try {
-      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20`);
+      const langFilter = language === 'ja' ? '&q=nationalPokedexNumbers:[1 TO 9999]' : '';
+      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20${langFilter}`);
       const data = await response.json();
       setResults(data.data || []);
     } catch (error) {
@@ -106,11 +124,39 @@ export default function Index() {
     pricecharting: 'PriceCharting',
     ebay_sold: 'eBay Sold',
     ebay_30day: 'eBay 30-Day',
+    yahoo_japan: 'Yahoo Japan',
+    mercari_japan: 'Mercari JP',
   };
+
+  const availableSources = language === 'ja'
+    ? ['yahoo_japan', 'mercari_japan', 'pricecharting']
+    : ['tcgplayer', 'pricecharting', 'ebay_sold', 'ebay_30day'];
+
+const isPhase2Language = !['en', 'ja'].includes(language);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Card Vendor App</Text>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
+        <View style={styles.languageRow}>
+          {LANGUAGES.map((lang) => (
+            <TouchableOpacity
+              key={lang.code}
+              style={[styles.langButton, language === lang.code && styles.langButtonActive]}
+              onPress={() => setLanguage(lang.code)}
+            >
+              <Text style={styles.langFlag}>{lang.flag}</Text>
+              <Text style={[styles.langLabel, language === lang.code && styles.langLabelActive]}>
+                {lang.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+      {isPhase2Language && (
+        <Text style={styles.phase2Note}>⚠ Full pricing for this language coming in Phase 2. Showing English prices.</Text>
+      )}
 
       {!selectedCard ? (
         <>
@@ -156,6 +202,11 @@ export default function Index() {
             <Text style={styles.back}>← Back to results</Text>
           </TouchableOpacity>
           <View style={styles.detailContainer}>
+            <View style={styles.languageBadge}>
+              <Text style={styles.languageBadgeText}>
+                {LANGUAGES.find(l => l.code === language)?.flag} {LANGUAGES.find(l => l.code === language)?.label}
+              </Text>
+            </View>
             <Image source={{ uri: selectedCard.images.large }} style={styles.largeImage} />
             <Text style={styles.cardName}>{selectedCard.name}</Text>
             <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
@@ -218,7 +269,7 @@ export default function Index() {
 
             <Text style={styles.sourcesTitle}>Price Sources</Text>
             <View style={styles.sourcesRow}>
-              {['tcgplayer', 'pricecharting', 'ebay_sold', 'ebay_30day'].map((source) => (
+              {availableSources.map((source) => (
                 <TouchableOpacity
                   key={source}
                   style={[styles.sourceButton, anchorSource === source && styles.sourceButtonActive]}
@@ -242,7 +293,15 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  languageScroll: { marginBottom: 10 },
+languageRow: { flexDirection: 'row', gap: 8, paddingBottom: 5 },
+phase2Note: { fontSize: 12, color: '#f4a261', marginBottom: 10, textAlign: 'center' },
+  langButton: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', flex: 1, justifyContent: 'center' },
+  langButtonActive: { borderColor: '#e63946', backgroundColor: '#fff3f3' },
+  langFlag: { fontSize: 18, marginRight: 6 },
+  langLabel: { fontSize: 14, color: '#666' },
+  langLabelActive: { color: '#e63946', fontWeight: 'bold' },
   searchRow: { flexDirection: 'row', marginBottom: 20, alignItems: 'center' },
   micButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
   micButtonActive: { backgroundColor: '#ffd6d6' },
@@ -259,6 +318,8 @@ const styles = StyleSheet.create({
   cardNumber: { fontSize: 13, color: '#999' },
   detailContainer: { alignItems: 'center' },
   back: { color: '#e63946', marginBottom: 15, fontSize: 16 },
+  languageBadge: { backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 10 },
+  languageBadgeText: { fontSize: 13, color: '#444' },
   largeImage: { width: 200, height: 280, borderRadius: 8, marginBottom: 15 },
   priceBox: { marginTop: 20, alignItems: 'center', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10, width: '100%' },
   priceLabel: { fontSize: 14, color: '#666', marginBottom: 5 },
