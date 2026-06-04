@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CONDITIONS = [
   { label: 'Poor', multiplier: 0.1 },
@@ -20,6 +21,26 @@ export default function Index() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [anchorSource, setAnchorSource] = useState('tcgplayer');
   const [conditionIndex, setConditionIndex] = useState(5);
+  const [percentage, setPercentage] = useState(80);
+
+  useEffect(() => {
+    loadPercentage();
+  }, []);
+
+ const loadPercentage = async () => {
+    try {
+      const value = await AsyncStorage.getItem('vendor_percentage');
+      if (value !== null) setPercentage(Number(value));
+    } catch (error) {
+      console.log('No saved percentage, using default 80%');
+    }
+  };
+
+  const savePercentage = async (newPercentage) => {
+    setPercentage(newPercentage);
+    await AsyncStorage.setItem('vendor_percentage', String(newPercentage));
+  };
+   
 
   const searchCards = async () => {
     if (!query.trim()) return;
@@ -54,10 +75,9 @@ export default function Index() {
   };
 
   const getAnchorPrice = () => getPrice(selectedCard, anchorSource);
-
- const conditionMultiplier = CONDITIONS[conditionIndex].multiplier;
-const anchorPrice = selectedCard ? getAnchorPrice() : null;
-const vendorPrice = anchorPrice ? anchorPrice * 0.8 * conditionMultiplier : null;
+  const conditionMultiplier = CONDITIONS[conditionIndex].multiplier;
+  const anchorPrice = selectedCard ? getAnchorPrice() : null;
+  const vendorPrice = anchorPrice ? anchorPrice * (percentage / 100) * conditionMultiplier : null;
 
   const sourceLabel = {
     tcgplayer: 'TCGPlayer',
@@ -144,12 +164,27 @@ const vendorPrice = anchorPrice ? anchorPrice * 0.8 * conditionMultiplier : null
             </View>
 
             <View style={styles.vendorBox}>
-              <Text style={styles.vendorLabel}>Your Price (80% — {CONDITIONS[conditionIndex].label})</Text>
+              <Text style={styles.vendorLabel}>Your Price ({percentage}% — {CONDITIONS[conditionIndex].label})</Text>
               {vendorPrice ? (
                 <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text>
               ) : (
                 <Text style={styles.noPrice}>—</Text>
               )}
+              <View style={styles.percentageRow}>
+                <TouchableOpacity
+                  style={styles.percentageButton}
+                  onPress={() => savePercentage(Math.max(10, percentage - 1))}
+                >
+                  <Text style={styles.percentageButtonText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.percentageValue}>{percentage}%</Text>
+                <TouchableOpacity
+                  style={styles.percentageButton}
+                  onPress={() => savePercentage(Math.min(100, percentage + 1))}
+                >
+                  <Text style={styles.percentageButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.sourcesTitle}>Price Sources</Text>
@@ -204,6 +239,10 @@ const styles = StyleSheet.create({
   vendorBox: { marginTop: 10, alignItems: 'center', backgroundColor: '#fff3f3', padding: 15, borderRadius: 10, width: '100%' },
   vendorLabel: { fontSize: 14, color: '#e63946', marginBottom: 5 },
   vendorPrice: { fontSize: 32, fontWeight: 'bold', color: '#e63946' },
+  percentageRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  percentageButton: { backgroundColor: '#e63946', width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  percentageButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  percentageValue: { fontSize: 18, fontWeight: 'bold', marginHorizontal: 15 },
   sourcesTitle: { marginTop: 20, marginBottom: 10, fontSize: 16, fontWeight: 'bold', alignSelf: 'flex-start' },
   sourcesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: '100%' },
   sourceButton: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, minWidth: '45%', alignItems: 'center' },
