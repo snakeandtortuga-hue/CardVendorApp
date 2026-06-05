@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Slider from '@react-native-community/slider';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const APP_LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -32,6 +34,9 @@ const TRANSLATIONS = {
     appLanguage: 'App Language', cardLanguage: 'Card Language', pointCamera: 'Point at card to identify',
     closeCamera: '✕ Close Camera', scanCard: '📷 Scan Card', listening: 'Listening...',
     variantConfirmed: '✓ Variant confirmed', premiumVariant: '⚠ Premium variant — verify carefully before pricing',
+    recentSearches: 'Recent Searches', results: 'results', priceHistory: 'Price History',
+    priceHistoryNote: 'Historical data connects to TCGPlayer API on launch.',
+    sortBy: 'Sort:', sortName: 'Name', sortPrice: 'Price', sortSet: 'Set',
   },
   fr: {
     title: 'App Vendeur Cartes', singles: '🔍 Singles', sealed: '📦 Scellé', barter: '🤝 Échange',
@@ -51,6 +56,9 @@ const TRANSLATIONS = {
     appLanguage: 'Langue de l\'app', cardLanguage: 'Langue de la carte', pointCamera: 'Pointez vers la carte',
     closeCamera: '✕ Fermer la caméra', scanCard: '📷 Scanner la carte', listening: 'En écoute...',
     variantConfirmed: '✓ Variante confirmée', premiumVariant: '⚠ Variante premium — vérifiez avant de tarifer',
+    recentSearches: 'Recherches récentes', results: 'résultats', priceHistory: 'Historique des prix',
+    priceHistoryNote: 'Données historiques via TCGPlayer API au lancement.',
+    sortBy: 'Trier :', sortName: 'Nom', sortPrice: 'Prix', sortSet: 'Set',
   },
   ja: {
     title: 'カード販売アプリ', singles: '🔍 シングル', sealed: '📦 未開封', barter: '🤝 トレード',
@@ -70,6 +78,9 @@ const TRANSLATIONS = {
     appLanguage: 'アプリ言語', cardLanguage: 'カード言語', pointCamera: 'カードに向けてください',
     closeCamera: '✕ カメラを閉じる', scanCard: '📷 カードをスキャン', listening: '聞いています...',
     variantConfirmed: '✓ バリアント確認済み', premiumVariant: '⚠ プレミアムバリアント — 価格設定前に確認',
+    recentSearches: '最近の検索', results: '件', priceHistory: '価格履歴',
+    priceHistoryNote: 'TCGPlayer APIで価格履歴を提供予定。',
+    sortBy: '並び替え：', sortName: '名前', sortPrice: '価格', sortSet: 'セット',
   },
   es: {
     title: 'App Vendedor Cartas', singles: '🔍 Singles', sealed: '📦 Sellado', barter: '🤝 Intercambio',
@@ -89,6 +100,9 @@ const TRANSLATIONS = {
     appLanguage: 'Idioma de la app', cardLanguage: 'Idioma de la carta', pointCamera: 'Apunta hacia la carta',
     closeCamera: '✕ Cerrar cámara', scanCard: '📷 Escanear carta', listening: 'Escuchando...',
     variantConfirmed: '✓ Variante confirmada', premiumVariant: '⚠ Variante premium — verifica antes de fijar precio',
+    recentSearches: 'Búsquedas recientes', results: 'resultados', priceHistory: 'Historial de precios',
+    priceHistoryNote: 'Datos históricos via TCGPlayer API al lanzamiento.',
+    sortBy: 'Ordenar:', sortName: 'Nombre', sortPrice: 'Precio', sortSet: 'Set',
   },
   de: {
     title: 'Karten Händler App', singles: '🔍 Singles', sealed: '📦 Versiegelt', barter: '🤝 Tausch',
@@ -108,6 +122,9 @@ const TRANSLATIONS = {
     appLanguage: 'App-Sprache', cardLanguage: 'Kartensprache', pointCamera: 'Auf Karte richten',
     closeCamera: '✕ Kamera schließen', scanCard: '📷 Karte scannen', listening: 'Höre zu...',
     variantConfirmed: '✓ Variante bestätigt', premiumVariant: '⚠ Premium-Variante — vor Preisgestaltung prüfen',
+    recentSearches: 'Letzte Suchen', results: 'Ergebnisse', priceHistory: 'Preisverlauf',
+    priceHistoryNote: 'Historische Daten via TCGPlayer API beim Start.',
+    sortBy: 'Sortieren:', sortName: 'Name', sortPrice: 'Preis', sortSet: 'Set',
   },
 };
 
@@ -177,11 +194,68 @@ const VARIANTS = [
 
 const SCREENS = { SEARCH: 'search', CARD: 'card', SEALED: 'sealed', BARTER: 'barter', BARTER_SEARCH: 'barter_search', SETTINGS: 'settings' };
 
+const generateMockPriceHistory = (currentPrice, releaseDate) => {
+  if (!currentPrice || !releaseDate) return [];
+  const start = new Date(releaseDate);
+  const now = new Date();
+  const months = Math.max(1, Math.round((now - start) / (1000 * 60 * 60 * 24 * 30)));
+  const points = Math.min(months, 24);
+  const data = [];
+  let price = currentPrice * (0.4 + Math.random() * 0.4);
+  for (let i = 0; i <= points; i++) {
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + Math.round((i / points) * months));
+    price = price * (0.85 + Math.random() * 0.3);
+    if (i === points) price = currentPrice;
+    data.push({ date: d.toLocaleDateString('en', { month: 'short', year: '2-digit' }), price: Math.max(0.25, price) });
+  }
+  return data;
+};
+
+const MiniChart = ({ data, currentPrice }) => {
+  if (!data || data.length < 2) return null;
+  const chartWidth = SCREEN_WIDTH - 80;
+  const chartHeight = 80;
+  const padding = 10;
+  const prices = data.map(d => d.price);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const range = maxPrice - minPrice || 1;
+  const points = data.map((d, i) => {
+    const x = padding + (i / (data.length - 1)) * (chartWidth - padding * 2);
+    const y = chartHeight - padding - ((d.price - minPrice) / range) * (chartHeight - padding * 2);
+    return `${x},${y}`;
+  }).join(' ');
+  const firstPrice = data[0].price;
+  const trending = currentPrice >= firstPrice;
+  const color = trending ? '#4caf50' : '#e63946';
+  return (
+    <View style={styles.chartContainer}>
+      <svg width={chartWidth} height={chartHeight} style={{ display: 'block' }}>
+        <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+        {data.map((d, i) => {
+          const x = padding + (i / (data.length - 1)) * (chartWidth - padding * 2);
+          const y = chartHeight - padding - ((d.price - minPrice) / range) * (chartHeight - padding * 2);
+          return i === 0 || i === data.length - 1 ? (
+            <circle key={i} cx={x} cy={y} r="3" fill={color} />
+          ) : null;
+        })}
+      </svg>
+      <View style={styles.chartLabels}>
+        <Text style={styles.chartLabel}>{data[0].date}</Text>
+        <Text style={[styles.chartTrend, { color }]}>{trending ? '▲' : '▼'} {Math.abs(((currentPrice - firstPrice) / firstPrice) * 100).toFixed(0)}%</Text>
+        <Text style={styles.chartLabel}>{data[data.length - 1].date}</Text>
+      </View>
+    </View>
+  );
+};
+
 export default function Index() {
   const [screen, setScreen] = useState(SCREENS.SEARCH);
   const [appLang, setAppLang] = useState('en');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [sortBy, setSortBy] = useState('name');
   const [loading, setLoading] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [anchorSource, setAnchorSource] = useState('tcgplayer');
@@ -213,6 +287,8 @@ export default function Index() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [selectedVariant, setSelectedVariant] = useState(null);
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [priceHistory, setPriceHistory] = useState([]);
 
   const t = TRANSLATIONS[appLang];
 
@@ -220,6 +296,7 @@ export default function Index() {
     loadPercentage();
     fetchExchangeRates();
     loadSettings();
+    loadRecentSearches();
   }, []);
 
   const loadSettings = async () => {
@@ -239,6 +316,21 @@ export default function Index() {
   const saveCardLanguage = async (lang) => {
     setCardLanguage(lang);
     await AsyncStorage.setItem('card_language', lang);
+  };
+
+  const loadRecentSearches = async () => {
+    try {
+      const val = await AsyncStorage.getItem('recent_searches');
+      if (val) setRecentSearches(JSON.parse(val));
+    } catch (e) {}
+  };
+
+  const saveRecentSearch = async (searchQuery) => {
+    try {
+      const updated = [searchQuery, ...recentSearches.filter(s => s !== searchQuery)].slice(0, 10);
+      setRecentSearches(updated);
+      await AsyncStorage.setItem('recent_searches', JSON.stringify(updated));
+    } catch (e) {}
   };
 
   useSpeechRecognitionEvent('result', (event) => {
@@ -308,13 +400,25 @@ export default function Index() {
     return allCards;
   };
 
-  const searchCards = async () => {
-    if (!query.trim()) return;
+  const getSortedResults = (cards) => {
+    if (sortBy === 'price') {
+      return [...cards].sort((a, b) => (getCardPrice(b) || 0) - (getCardPrice(a) || 0));
+    }
+    if (sortBy === 'set') {
+      return [...cards].sort((a, b) => a.set.name.localeCompare(b.set.name));
+    }
+    return [...cards].sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const searchCards = async (overrideQuery) => {
+    const q = overrideQuery || query;
+    if (!q.trim()) return;
     setLoading(true);
     setSelectedCard(null);
     try {
-      const allCards = await fetchAllCards(query);
+      const allCards = await fetchAllCards(q);
       setResults(allCards);
+      await saveRecentSearch(q.trim());
     } catch (error) { console.error(error); }
     setLoading(false);
   };
@@ -375,6 +479,9 @@ export default function Index() {
     setCertNumber('');
     setCertResult(null);
     setSelectedVariant(null);
+    const currentPrice = getCardPrice(card);
+    const history = generateMockPriceHistory(currentPrice, card.set?.releaseDate);
+    setPriceHistory(history);
     setScreen(SCREENS.CARD);
   };
 
@@ -494,7 +601,7 @@ export default function Index() {
           ))}
         </View>
         <View style={styles.searchRow}>
-          <TextInput style={styles.input} placeholder={t.searchPlaceholder} value={barterQuery} onChangeText={setBarterQuery} />
+          <TextInput style={styles.input} placeholder={t.searchPlaceholder} value={barterQuery} onChangeText={setBarterQuery} onSubmitEditing={searchBarterCards} returnKeyType="search" />
           <TouchableOpacity style={styles.button} onPress={searchBarterCards}>
             <Text style={styles.buttonText}>{t.search}</Text>
           </TouchableOpacity>
@@ -528,7 +635,7 @@ export default function Index() {
         <ScrollView>
           <View style={styles.barterContainer}>
             <View style={styles.deckColumn}>
-              <Text style={styles.deckTitle}>{t.yourDeck}</Text>
+              <Text style={styles.deckTitle}>{t.yourDeck} ({myDeck.length})</Text>
               {myDeck.map((entry) => (
                 <View key={entry.id} style={styles.deckCard}>
                   <Image source={{ uri: entry.card.images.small }} style={styles.deckCardImage} />
@@ -555,7 +662,7 @@ export default function Index() {
             </View>
             <View style={styles.deckDivider} />
             <View style={styles.deckColumn}>
-              <Text style={styles.deckTitle}>{t.theirDeck}</Text>
+              <Text style={styles.deckTitle}>{t.theirDeck} ({theirDeck.length})</Text>
               {theirDeck.map((entry) => (
                 <View key={entry.id} style={styles.deckCard}>
                   <Image source={{ uri: entry.card.images.small }} style={styles.deckCardImage} />
@@ -606,7 +713,14 @@ export default function Index() {
         <ScrollView>
           <Text style={styles.sectionTitle}>{t.sealedLookup}</Text>
           <View style={styles.searchRow}>
-            <TextInput style={styles.input} placeholder={t.sealedPlaceholder} value={sealedQuery} onChangeText={setSealedQuery} />
+            <TextInput style={styles.input} placeholder={t.sealedPlaceholder} value={sealedQuery} onChangeText={setSealedQuery} returnKeyType="search" onSubmitEditing={async () => {
+              if (!sealedQuery.trim()) return;
+              setSealedLoading(true);
+              setSealedProduct(null);
+              await new Promise(r => setTimeout(r, 800));
+              setSealedProduct({ name: sealedQuery, type: 'Booster Box', set: 'Unknown Set', note: 'PriceCharting API connection coming soon.' });
+              setSealedLoading(false);
+            }} />
             <TouchableOpacity style={styles.button} onPress={async () => {
               if (!sealedQuery.trim()) return;
               setSealedLoading(true);
@@ -646,6 +760,8 @@ export default function Index() {
     );
   }
 
+  const sortedResults = getSortedResults(results);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{t.title}</Text>
@@ -673,19 +789,58 @@ export default function Index() {
               <TouchableOpacity style={[styles.micButton, listening && styles.micButtonActive]} onPress={startListening}>
                 <Text style={styles.micIcon}>{listening ? '🔴' : '🎤'}</Text>
               </TouchableOpacity>
-              <TextInput style={styles.input} placeholder={t.searchPlaceholder} value={query} onChangeText={setQuery} />
+              <TextInput
+                style={styles.input}
+                placeholder={t.searchPlaceholder}
+                value={query}
+                onChangeText={setQuery}
+                onSubmitEditing={() => searchCards()}
+                returnKeyType="search"
+              />
               <TouchableOpacity style={styles.cameraButton} onPress={openCamera}>
                 <Text style={styles.micIcon}>📷</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={searchCards}>
+              <TouchableOpacity style={styles.button} onPress={() => searchCards()}>
                 <Text style={styles.buttonText}>{t.search}</Text>
               </TouchableOpacity>
             </View>
           )}
           {listening && <Text style={styles.listeningText}>{t.listening}</Text>}
+
+          {results.length === 0 && !loading && recentSearches.length > 0 && (
+            <View style={styles.recentContainer}>
+              <Text style={styles.recentTitle}>{t.recentSearches}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.recentRow}>
+                  {recentSearches.map((s, i) => (
+                    <TouchableOpacity key={i} style={styles.recentChip} onPress={() => { setQuery(s); searchCards(s); }}>
+                      <Text style={styles.recentChipText}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
+          {results.length > 0 && (
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsCount}>{results.length} {t.results}</Text>
+              <View style={styles.sortRow}>
+                <Text style={styles.sortLabel}>{t.sortBy}</Text>
+                {['name', 'price', 'set'].map((s) => (
+                  <TouchableOpacity key={s} style={[styles.sortButton, sortBy === s && styles.sortButtonActive]} onPress={() => setSortBy(s)}>
+                    <Text style={[styles.sortButtonText, sortBy === s && styles.sortButtonTextActive]}>
+                      {s === 'name' ? t.sortName : s === 'price' ? t.sortPrice : t.sortSet}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           {loading && <ActivityIndicator size="large" color="#e63946" />}
           <FlatList
-            data={results}
+            data={sortedResults}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => selectCard(item)}>
@@ -696,6 +851,9 @@ export default function Index() {
                     <Text style={styles.cardSet}>{item.set.name}</Text>
                     <Text style={styles.cardNumber}>#{item.number}</Text>
                   </View>
+                  {getCardPrice(item) > 0 && (
+                    <Text style={styles.cardPriceTag}>${getCardPrice(item).toFixed(2)}</Text>
+                  )}
                 </View>
               </TouchableOpacity>
             )}
@@ -717,6 +875,14 @@ export default function Index() {
             <Image source={{ uri: selectedCard.images.large }} style={styles.largeImage} />
             <Text style={styles.cardName}>{selectedCard.name}</Text>
             <Text style={styles.cardSet}>{selectedCard.set.name} — #{selectedCard.number}</Text>
+
+            {priceHistory.length > 1 && (
+              <View style={styles.priceHistoryBox}>
+                <Text style={styles.priceHistoryTitle}>{t.priceHistory}</Text>
+                <MiniChart data={priceHistory} currentPrice={getCardPrice(selectedCard)} />
+                <Text style={styles.priceHistoryNote}>{t.priceHistoryNote}</Text>
+              </View>
+            )}
 
             <View style={styles.variantBox}>
               <Text style={styles.variantTitle}>{t.confirmVariant}</Text>
@@ -873,7 +1039,7 @@ const styles = StyleSheet.create({
   langLabel: { fontSize: 13, color: '#666' },
   langLabelActive: { color: '#e63946', fontWeight: 'bold' },
   phase2Note: { fontSize: 12, color: '#f4a261', marginVertical: 10, textAlign: 'center' },
-  searchRow: { flexDirection: 'row', marginBottom: 20, alignItems: 'center' },
+  searchRow: { flexDirection: 'row', marginBottom: 10, alignItems: 'center' },
   micButton: { backgroundColor: '#eee', padding: 10, borderRadius: 8, marginRight: 8, justifyContent: 'center', alignItems: 'center' },
   micButtonActive: { backgroundColor: '#ffd6d6' },
   micIcon: { fontSize: 18 },
@@ -891,17 +1057,38 @@ const styles = StyleSheet.create({
   input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginRight: 10 },
   button: { backgroundColor: '#e63946', padding: 10, borderRadius: 8, justifyContent: 'center' },
   buttonText: { color: '#fff', fontWeight: 'bold' },
-  card: { flexDirection: 'row', marginBottom: 15, borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10 },
+  recentContainer: { marginBottom: 15 },
+  recentTitle: { fontSize: 13, color: '#999', marginBottom: 8 },
+  recentRow: { flexDirection: 'row', gap: 8 },
+  recentChip: { backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  recentChipText: { fontSize: 13, color: '#444' },
+  resultsHeader: { marginBottom: 10 },
+  resultsCount: { fontSize: 13, color: '#999', marginBottom: 6 },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sortLabel: { fontSize: 13, color: '#666' },
+  sortButton: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#ccc', backgroundColor: '#fff' },
+  sortButtonActive: { borderColor: '#e63946', backgroundColor: '#e63946' },
+  sortButtonText: { fontSize: 12, color: '#666' },
+  sortButtonTextActive: { color: '#fff', fontWeight: 'bold' },
+  card: { flexDirection: 'row', marginBottom: 10, borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10, alignItems: 'center' },
   cardImage: { width: 60, height: 84, borderRadius: 4 },
-  cardInfo: { marginLeft: 10, justifyContent: 'center' },
+  cardInfo: { marginLeft: 10, justifyContent: 'center', flex: 1 },
   cardName: { fontSize: 16, fontWeight: 'bold' },
   cardSet: { fontSize: 13, color: '#666' },
   cardNumber: { fontSize: 13, color: '#999' },
+  cardPriceTag: { fontSize: 14, fontWeight: 'bold', color: '#e63946', marginLeft: 8 },
   detailContainer: { alignItems: 'center' },
   back: { color: '#e63946', marginBottom: 15, fontSize: 16 },
   languageBadge: { backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 10 },
   languageBadgeText: { fontSize: 13, color: '#444' },
   largeImage: { width: 200, height: 280, borderRadius: 8, marginBottom: 15 },
+  priceHistoryBox: { width: '100%', backgroundColor: '#f8f8f8', borderRadius: 10, padding: 15, marginBottom: 15 },
+  priceHistoryTitle: { fontSize: 15, fontWeight: 'bold', color: '#444', marginBottom: 10 },
+  priceHistoryNote: { fontSize: 11, color: '#999', marginTop: 6, textAlign: 'center' },
+  chartContainer: { width: '100%' },
+  chartLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  chartLabel: { fontSize: 11, color: '#999' },
+  chartTrend: { fontSize: 13, fontWeight: 'bold' },
   variantBox: { width: '100%', backgroundColor: '#fffbf0', borderWidth: 1, borderColor: '#f4a261', borderRadius: 10, padding: 15, marginVertical: 15 },
   variantTitle: { fontSize: 15, fontWeight: 'bold', color: '#c77b2e', marginBottom: 4 },
   variantSubtitle: { fontSize: 12, color: '#999', marginBottom: 12 },
