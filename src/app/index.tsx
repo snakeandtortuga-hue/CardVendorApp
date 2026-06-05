@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, A
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import Slider from '@react-native-community/slider';
 
 const CONDITIONS = [
   { label: 'Poor', multiplier: 0.1 },
@@ -167,9 +168,17 @@ export default function Index() {
     setLoading(true);
     setSelectedCard(null);
     try {
-      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${query}&pageSize=20`);
-      const data = await response.json();
-      setResults(data.data || []);
+      let allCards = [];
+      let page = 1;
+      let totalCount = 0;
+      do {
+        const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:*${query}*&pageSize=250&page=${page}`);
+        const data = await response.json();
+        totalCount = data.totalCount || 0;
+        allCards = [...allCards, ...(data.data || [])];
+        page++;
+      } while (allCards.length < totalCount);
+      setResults(allCards);
     } catch (error) { console.error(error); }
     setLoading(false);
   };
@@ -178,9 +187,17 @@ export default function Index() {
     if (!barterQuery.trim()) return;
     setBarterLoading(true);
     try {
-      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${barterQuery}&pageSize=20`);
-      const data = await response.json();
-      setBarterResults(data.data || []);
+      let allCards = [];
+      let page = 1;
+      let totalCount = 0;
+      do {
+        const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:*${barterQuery}*&pageSize=250&page=${page}`);
+        const data = await response.json();
+        totalCount = data.totalCount || 0;
+        allCards = [...allCards, ...(data.data || [])];
+        page++;
+      } while (allCards.length < totalCount);
+      setBarterResults(allCards);
     } catch (error) { console.error(error); }
     setBarterLoading(false);
   };
@@ -366,14 +383,21 @@ export default function Index() {
               <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('my'); setScreen(SCREENS.BARTER_SEARCH); }}>
                 <Text style={styles.addCardButtonText}>+ Add Card</Text>
               </TouchableOpacity>
-              <View style={styles.percentageRow}>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => setMyPercentage(Math.max(10, myPercentage - 1))}>
-                  <Text style={styles.percentageButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.percentageValue}>{myPercentage}%</Text>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => setMyPercentage(Math.min(100, myPercentage + 1))}>
-                  <Text style={styles.percentageButtonText}>+</Text>
-                </TouchableOpacity>
+              <Text style={styles.percentageValue}>{myPercentage}%</Text>
+              <View style={styles.sliderRow}>
+                <Text style={styles.sliderLabel}>10%</Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={10}
+                  maximumValue={100}
+                  step={1}
+                  value={myPercentage}
+                  onValueChange={(val) => setMyPercentage(val)}
+                  minimumTrackTintColor="#e63946"
+                  maximumTrackTintColor="#ccc"
+                  thumbTintColor="#e63946"
+                />
+                <Text style={styles.sliderLabel}>100%</Text>
               </View>
               <Text style={styles.deckTotal}>Total: ${myTotal.toFixed(2)}</Text>
             </View>
@@ -398,14 +422,21 @@ export default function Index() {
               <TouchableOpacity style={styles.addCardButton} onPress={() => { setBarterTarget('their'); setScreen(SCREENS.BARTER_SEARCH); }}>
                 <Text style={styles.addCardButtonText}>+ Add Card</Text>
               </TouchableOpacity>
-              <View style={styles.percentageRow}>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => setTheirPercentage(Math.max(10, theirPercentage - 1))}>
-                  <Text style={styles.percentageButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.percentageValue}>{theirPercentage}%</Text>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => setTheirPercentage(Math.min(100, theirPercentage + 1))}>
-                  <Text style={styles.percentageButtonText}>+</Text>
-                </TouchableOpacity>
+              <Text style={styles.percentageValue}>{theirPercentage}%</Text>
+              <View style={styles.sliderRow}>
+                <Text style={styles.sliderLabel}>10%</Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={10}
+                  maximumValue={100}
+                  step={1}
+                  value={theirPercentage}
+                  onValueChange={(val) => setTheirPercentage(val)}
+                  minimumTrackTintColor="#e63946"
+                  maximumTrackTintColor="#ccc"
+                  thumbTintColor="#e63946"
+                />
+                <Text style={styles.sliderLabel}>100%</Text>
               </View>
               <Text style={styles.deckTotal}>Total: ${theirTotal.toFixed(2)}</Text>
             </View>
@@ -656,14 +687,21 @@ export default function Index() {
             <View style={styles.vendorBox}>
               <Text style={styles.vendorLabel}>Your Price ({percentage}% — {isGraded ? `${selectedGrader} ${selectedGrade}` : CONDITIONS[conditionIndex].label})</Text>
               {vendorPrice ? <Text style={styles.vendorPrice}>${vendorPrice.toFixed(2)}</Text> : <Text style={styles.noPrice}>—</Text>}
-              <View style={styles.percentageRow}>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => savePercentage(Math.max(10, percentage - 1))}>
-                  <Text style={styles.percentageButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.percentageValue}>{percentage}%</Text>
-                <TouchableOpacity style={styles.percentageButton} onPress={() => savePercentage(Math.min(100, percentage + 1))}>
-                  <Text style={styles.percentageButtonText}>+</Text>
-                </TouchableOpacity>
+              <Text style={styles.percentageValue}>{percentage}%</Text>
+              <View style={styles.sliderRow}>
+                <Text style={styles.sliderLabel}>10%</Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={10}
+                  maximumValue={100}
+                  step={1}
+                  value={percentage}
+                  onValueChange={(val) => savePercentage(val)}
+                  minimumTrackTintColor="#e63946"
+                  maximumTrackTintColor="#ccc"
+                  thumbTintColor="#e63946"
+                />
+                <Text style={styles.sliderLabel}>100%</Text>
               </View>
             </View>
 
@@ -799,10 +837,10 @@ const styles = StyleSheet.create({
   vendorBox: { marginTop: 10, alignItems: 'center', backgroundColor: '#fff3f3', padding: 15, borderRadius: 10, width: '100%' },
   vendorLabel: { fontSize: 14, color: '#e63946', marginBottom: 5 },
   vendorPrice: { fontSize: 32, fontWeight: 'bold', color: '#e63946' },
-  percentageRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  percentageButton: { backgroundColor: '#e63946', width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  percentageButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  percentageValue: { fontSize: 18, fontWeight: 'bold', marginHorizontal: 15 },
+  percentageValue: { fontSize: 18, fontWeight: 'bold', marginVertical: 6, color: '#e63946' },
+  sliderRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginTop: 4 },
+  slider: { flex: 1, height: 40 },
+  sliderLabel: { fontSize: 11, color: '#999', width: 35, textAlign: 'center' },
   currencyBox: { marginTop: 20, width: '100%', backgroundColor: '#f8f8f8', padding: 15, borderRadius: 10 },
   currencyTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
   currencyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
